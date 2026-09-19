@@ -8,5 +8,52 @@ Telegram assistant for supplement tracking, confirmed label/product data, determ
 - **GitHub** is the source of truth for code, branches, commits, pull requests, CI, and releases.
 - Scientific constants and safety rules require explicit provenance and applicability.
 - Numeric safety decisions must be deterministic; LLM output is not the authority for dose calculations or threshold comparisons.
+- Implementation work is performed through issue-scoped branches and pull requests. No direct feature development on `main`.
 
-Implementation work is performed through issue-scoped branches and pull requests. No direct feature development on `main`.
+See `docs/PROJECT_CONTROL.md`, `docs/ARCHITECTURE.md`, and `docs/SCIENTIFIC_PROVENANCE.md`.
+
+## Local development
+
+VitaminBot currently targets **Python 3.12**.
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+```
+
+On Windows PowerShell, activate the environment with:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+Run the baseline checks:
+
+```bash
+ruff check .
+ruff format --check .
+mypy src
+pytest
+```
+
+## PostgreSQL and Redis
+
+Copy the environment template to a local `.env` file and replace placeholder values where appropriate. The real `.env` file is ignored by Git.
+
+```bash
+cp .env.example .env
+docker compose up -d
+docker compose ps
+```
+
+On Windows PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+docker compose up -d
+docker compose ps
+```
+
+Stop the services with `docker compose down`. Remove development volumes only when you intentionally want to discard local data: `docker compose down -v`.
