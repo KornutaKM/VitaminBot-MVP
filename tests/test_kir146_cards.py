@@ -153,11 +153,7 @@ def _reference(render: object, reference_type: ReferenceType) -> object:
 def _record_ids(render: object) -> set[str]:
     binding = render.binding
     assert binding is not None
-    return {
-        snapshot.record_id
-        for snapshot in binding.references
-        if snapshot.record_id is not None
-    }
+    return {snapshot.record_id for snapshot in binding.references if snapshot.record_id is not None}
 
 
 def test_static_copy_cannot_own_scientific_measurement() -> None:
@@ -180,9 +176,8 @@ def test_accepted_nonreference_label_example_is_preserved_verbatim() -> None:
     assert claim is not None
 
     assert (
-        claim.plain_text
-        == "Compound mass is not elemental magnesium. A label such as "
-        "\"magnesium citrate 500 mg\" must not be assumed to mean 500 mg elemental magnesium."
+        claim.plain_text == "Compound mass is not elemental magnesium. A label such as "
+        '"magnesium citrate 500 mg" must not be assumed to mean 500 mg elemental magnesium.'
     )
 
 
@@ -264,9 +259,10 @@ def test_adversarial_06_folate_food_basis_does_not_collapse_into_supplement_ul()
     )
     assert folic_ul
     assert all(snapshot.record_id is None for snapshot in folic_ul)
-    assert "dietary-folate" not in " ".join(
-        snapshot.record_id or "" for snapshot in binding.references
-    ).lower()
+    assert (
+        "dietary-folate"
+        not in " ".join(snapshot.record_id or "" for snapshot in binding.references).lower()
+    )
 
 
 def test_adversarial_07_iron_safe_level_is_not_rendered_as_ul() -> None:
@@ -464,8 +460,7 @@ def test_adversarial_19_medication_no_result_never_becomes_no_interaction() -> N
     assert "Next step:" in render.screen.text
     assert "Escalation:" in render.screen.text
     assert any(
-        "not a 'no interaction' result" in item
-        for item in render.envelope.non_droppable_warnings
+        "not a 'no interaction' result" in item for item in render.envelope.non_droppable_warnings
     )
     assert "no interaction." not in render.screen.text.lower()
 
@@ -516,15 +511,12 @@ def test_adversarial_20_source_supersession_invalidates_current_but_history_repr
     )
     assert changed_source_rows
     assert all(snapshot.record_id is None for snapshot in changed_source_rows)
-    assert all(
-        snapshot.lookup_status == "source_not_active"
-        for snapshot in changed_source_rows
-    )
+    assert all(snapshot.lookup_status == "source_not_active" for snapshot in changed_source_rows)
     historical = changed_renderer.render_historical(original.binding)
     assert historical.binding == original.binding
-    assert historical.screen.text == original_renderer.render_historical(
-        original.binding
-    ).screen.text
+    assert (
+        historical.screen.text == original_renderer.render_historical(original.binding).screen.text
+    )
 
 
 def test_adversarial_21_context_revision_change_invalidates_cached_card() -> None:
@@ -680,18 +672,12 @@ def test_bot_native_nutrient_command_and_callbacks_need_no_mini_app() -> None:
 
     assert application.bot_data["kir146_controller"] is nutrient_controller
     commands = [
-        handler.command
-        for handler in application.handlers[0]
-        if hasattr(handler, "command")
+        handler.command for handler in application.handlers[0] if hasattr(handler, "command")
     ]
     assert any("nutrient" in command for command in commands)
 
     screen = nutrient_controller.list_cards()
-    callbacks = [
-        button.callback_data
-        for row in screen.rows
-        for button in row
-    ]
+    callbacks = [button.callback_data for row in screen.rows for button in row]
     assert callbacks
     assert all(len(callback.encode("utf-8")) <= 64 for callback in callbacks)
     assert all("http" not in callback for callback in callbacks)
@@ -716,9 +702,9 @@ def test_historical_binding_reproduces_content_after_current_registry_removes_it
         ),
         aliases=APPROVED_CARD_CONTENT.aliases,
     )
-    historical = NutrientCardRenderer(
-        registry=registry_without_b12
-    ).render_historical(current.binding)
+    historical = NutrientCardRenderer(registry=registry_without_b12).render_historical(
+        current.binding
+    )
 
     assert historical.binding == current.binding
     assert historical.screen.text == expected.screen.text

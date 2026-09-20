@@ -323,9 +323,7 @@ class NutrientCardRenderer:
                     ]
                 )
         unresolved = tuple(
-            snapshot
-            for snapshot in render.binding.references
-            if snapshot.record_id is None
+            snapshot for snapshot in render.binding.references if snapshot.record_id is None
         )
         if unresolved:
             lines.extend(["", "Unresolved reference/applicability state:"])
@@ -335,9 +333,7 @@ class NutrientCardRenderer:
                     f"{snapshot.lookup_status}; reasons={','.join(snapshot.reasons) or 'none'}"
                 )
                 if snapshot.candidate_record_ids:
-                    lines.append(
-                        f"  candidate_records={','.join(snapshot.candidate_record_ids)}"
-                    )
+                    lines.append(f"  candidate_records={','.join(snapshot.candidate_record_ids)}")
             lines.append("No unresolved value was replaced by a default.")
         return Screen(
             text=self._bounded_text(lines),
@@ -539,8 +535,7 @@ class NutrientCardRenderer:
         elif record.value_min is not None and record.value_max is not None:
             assert record.unit is not None
             token = (
-                f"{_decimal(record.value_min)}–{_decimal(record.value_max)} "
-                f"{record.unit.value}/day"
+                f"{_decimal(record.value_min)}–{_decimal(record.value_max)} {record.unit.value}/day"
             )
 
         if record.value_semantics is ValueSemantics.INCREMENT and token:
@@ -598,13 +593,9 @@ class NutrientCardRenderer:
                 + "|".join(source_class.value for source_class in record.allowed_source_classes)
             )
         if record.allowed_dha_forms:
-            parts.append(
-                "dha_form=" + "|".join(form.value for form in record.allowed_dha_forms)
-            )
+            parts.append("dha_form=" + "|".join(form.value for form in record.allowed_dha_forms))
         if record.epa_dha_ratio_max_exclusive is not None:
-            parts.append(
-                f"EPA/DHA <{_decimal(record.epa_dha_ratio_max_exclusive)}"
-            )
+            parts.append(f"EPA/DHA <{_decimal(record.epa_dha_ratio_max_exclusive)}")
         if record.excludes_background_dietary_dha:
             parts.append("background dietary DHA excluded")
         if record.excludes_medical_supervision:
@@ -728,10 +719,7 @@ class NutrientCardRenderer:
         claim_ids = self._content_claim_ids(content)
         provenance = tuple(
             sorted(
-                {
-                    source.source_key
-                    for source in claim_sources
-                }
+                {source.source_key for source in claim_sources}
                 | {
                     snapshot.source_key
                     for snapshot in references
@@ -749,9 +737,7 @@ class NutrientCardRenderer:
             ),
             known_facts=claim_ids
             + tuple(
-                snapshot.record_id
-                for snapshot in references
-                if snapshot.record_id is not None
+                snapshot.record_id for snapshot in references if snapshot.record_id is not None
             ),
             unknown_or_ambiguous=all_unknown,
             withheld_conclusion=(
@@ -857,8 +843,7 @@ class NutrientCardRenderer:
         )
 
         status = (
-            f"Status: {envelope.status.value}\n"
-            f"{envelope.withheld_conclusion or ''}".rstrip()
+            f"Status: {envelope.status.value}\n{envelope.withheld_conclusion or ''}".rstrip()
             if envelope.status is not CardStatus.INFORMATION
             else ""
         )
@@ -926,9 +911,7 @@ class NutrientCardRenderer:
             if len(text) <= max_chars:
                 break
             kept.remove(removable)
-            text = "\n\n".join(
-                sections[key] for key in order if key in kept and sections[key]
-            )
+            text = "\n\n".join(sections[key] for key in order if key in kept and sections[key])
         if len(text) > max_chars:
             raise ValueError(
                 "card cannot fit without dropping a non-droppable safety/applicability qualifier"
@@ -959,9 +942,7 @@ class NutrientCardRenderer:
         self,
         claims: tuple[ClaimSnapshot, ...],
     ) -> tuple[ProvenanceSnapshot, ...]:
-        source_keys = {
-            source_key for claim in claims for source_key in claim.source_refs
-        }
+        source_keys = {source_key for claim in claims for source_key in claim.source_refs}
         snapshots: list[ProvenanceSnapshot] = []
         for key in sorted(source_keys):
             source = self._registry.source(key)
@@ -1093,8 +1074,7 @@ class KIR146Controller:
             key=lambda content: content.display_name,
         )
         rows = tuple(
-            (Button(content.display_name, f"k146c:{content.substance_key}"),)
-            for content in active
+            (Button(content.display_name, f"k146c:{content.substance_key}"),) for content in active
         )
         rows += ((Button("DHA (specific scope)", "k146c:dha"),),)
         return Screen(

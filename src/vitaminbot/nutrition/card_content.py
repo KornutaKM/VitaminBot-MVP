@@ -403,7 +403,7 @@ CLAIMS: Final[tuple[ApprovedClaim, ...]] = (
     _claim(
         "mg.admin.v1",
         ClaimType.ADMINISTRATION_INFO,
-        "No validated generic \"magnesium at night\" rule exists. KIR-144 explicitly rejects "
+        'No validated generic "magnesium at night" rule exists. KIR-144 explicitly rejects '
         "automatic evening placement; clock time is user preference unless another governed "
         "rule applies.",
         "KIR-144",
@@ -411,7 +411,7 @@ CLAIMS: Final[tuple[ApprovedClaim, ...]] = (
     _claim(
         "mg.limit.v1",
         ClaimType.LIMITATION,
-        "Compound mass is not elemental magnesium. A label such as \"magnesium citrate 500 mg\" "
+        'Compound mass is not elemental magnesium. A label such as "magnesium citrate 500 mg" '
         "must not be assumed to mean 500 mg elemental magnesium.",
         "KIR-145",
     ),
@@ -446,7 +446,7 @@ CLAIMS: Final[tuple[ApprovedClaim, ...]] = (
     _claim(
         "zn.limit.v1",
         ClaimType.LIMITATION,
-        "Do not infer \"safe together\" when no interaction/scheduling rule is available.",
+        'Do not infer "safe together" when no interaction/scheduling rule is available.',
         "KIR-145",
     ),
     _claim(
@@ -508,7 +508,7 @@ CLAIMS: Final[tuple[ApprovedClaim, ...]] = (
     _claim(
         "b6.admin.v1",
         ClaimType.ADMINISTRATION_INFO,
-        "KIR-144 rejects a generic \"B vitamins in the morning\" or \"B6 at bedtime\" "
+        'KIR-144 rejects a generic "B vitamins in the morning" or "B6 at bedtime" '
         "scientific rule. "
         "Time-of-day placement is user preference unless another governed rule applies.",
         "KIR-144",
@@ -558,7 +558,7 @@ CLAIMS: Final[tuple[ApprovedClaim, ...]] = (
     _claim(
         "fol.identity.v1",
         ClaimType.IDENTITY,
-        "\"Folate\" is the vitamin family; folic acid is one form used in fortified foods and "
+        '"Folate" is the vitamin family; folic acid is one form used in fortified foods and '
         "many supplements. 5-MTHF is another supplemental form.",
         "ODS-FOL",
     ),
@@ -688,7 +688,7 @@ CLAIMS: Final[tuple[ApprovedClaim, ...]] = (
         "o3.admin.v1",
         ClaimType.ADMINISTRATION_INFO,
         "KIR-144 explicitly does not authorize a generic omega-3 fat-meal rule based only on "
-        "\"ethyl ester\"; delivery-system technology can change food dependence. Without the "
+        '"ethyl ester"; delivery-system technology can change food dependence. Without the '
         "exact validated formulation/delivery-system applicability, no automatic meal rule is "
         "shown. There is no validated generic Morning/Day/Evening rule.",
         "KIR-144",
