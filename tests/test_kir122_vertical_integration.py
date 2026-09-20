@@ -12,6 +12,10 @@ from psycopg import sql
 from vitaminbot.application.kir116 import KIR116Controller, Screen
 from vitaminbot.application.kir120 import KIR120Controller
 from vitaminbot.application.kir122 import KIR122Controller
+from vitaminbot.application.safety_envelope import (
+    SafetyEvidenceState,
+    SafetyStatus,
+)
 from vitaminbot.persistence import migrate
 from vitaminbot.persistence.kir116 import KIR116Store
 from vitaminbot.persistence.kir120 import KIR120Store, RoutineTimes
@@ -199,10 +203,23 @@ def test_clean_account_vertical_flow_is_snapshot_bound_and_fail_closed(
     assert "Отсутствие правила не означает, что сочетание безопасно" in rules.text
     assert "биологическое преимущество" in rules.text
 
+    envelopes = vertical.safety_envelopes(telegram_user_id)
+    assert envelopes
+    assert all(item.status is SafetyStatus.CANNOT_ASSESS for item in envelopes)
+    assert all(item.withheld_conclusion for item in envelopes)
+    assert all(item.resolution_path for item in envelopes)
+    assert all(item.non_droppable_warnings for item in envelopes)
+    assert all(item.context_revision.startswith("kir122:") for item in envelopes)
+    assert any(
+        item.evidence_state is SafetyEvidenceState.MISSING
+        for item in envelopes
+    )
+
     safety = vertical.safety(telegram_user_id)
-    assert "Не могу оценить" in safety.text
-    assert "не заменено взрослым значением" in safety.text
-    assert "персональной рекомендации по дозе" in safety.text
+    assert "Статус: Не могу оценить" in safety.text
+    assert "Вывод удержан:" in safety.text
+    assert "взрослое значение по умолчанию не используется" in safety.text
+    assert "Здесь нет персональной рекомендации по дозе." in safety.text
     assert "безопасно для вас" not in safety.text.lower()
 
     # Why/Sources actions are bound to the exact immutable snapshot revision.
