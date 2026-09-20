@@ -108,7 +108,7 @@ class KIR174Controller:
         bound = self.bound_context(telegram_user_id, base_revision=base_revision)
         return CardContext(
             profile=bound.profile,
-            exposure=ExposureContext(),
+            exposure=bound.iron_exposure if _substance_key == "iron" else ExposureContext(),
             jurisdiction=Jurisdiction.EU.value,
             context_revision=bound.context_revision,
             locale="en",
