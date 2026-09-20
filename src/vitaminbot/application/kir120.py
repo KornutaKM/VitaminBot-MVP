@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from collections.abc import Callable
 from datetime import UTC, datetime, time, timedelta
 from decimal import Decimal
 
@@ -33,11 +34,13 @@ class KIR120Controller:
         store: KIR120Store,
         *,
         later_delay: timedelta = timedelta(minutes=30),
+        rationale_provider: Callable[[int, str], str] | None = None,
     ) -> None:
         if later_delay <= timedelta(0):
             raise ValueError("later_delay must be positive")
         self._store = store
         self._later_delay = later_delay
+        self._rationale_provider = rationale_provider
 
     def has_pending_text(self, telegram_user_id: int) -> bool:
         user_id = self._store.ensure_user(telegram_user_id)
@@ -250,7 +253,7 @@ class KIR120Controller:
                 expected_revision = int(parts[2])
                 if action == "k120w":
                     occurrence = self._store.occurrence(user_id, occurrence_id)
-                    return self._why_screen(occurrence)
+                    return self._why_screen(telegram_user_id, occurrence)
                 if action == "k120t":
                     self._store.take(
                         user_id,
@@ -378,15 +381,22 @@ class KIR120Controller:
         )
         return Screen(text="\n".join(lines), rows=tuple(rows))
 
-    @staticmethod
-    def _why_screen(occurrence: OccurrenceRecord) -> Screen:
-        return Screen(
-            text=(
-                f"Why this time? — {occurrence.name}\n\n"
+    def _why_screen(
+        self,
+        telegram_user_id: int,
+        occurrence: OccurrenceRecord,
+    ) -> Screen:
+        rationale = (
+            self._rationale_provider(telegram_user_id, occurrence.instance_id)
+            if self._rationale_provider is not None
+            else (
                 "Timing source: Your preference. "
                 "No evidence-backed planning note is attached to this occurrence. "
                 "VitaminBot is not inferring a biological Morning/Day/Evening advantage."
-            ),
+            )
+        )
+        return Screen(
+            text=f"Why this time? — {occurrence.name}\n\n{rationale}",
             rows=((Button("Back to Today", "k120today"),),),
         )
 
