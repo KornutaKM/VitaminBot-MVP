@@ -101,7 +101,10 @@ def _render_group(group: list[DeliveryClaim]) -> str:
     heading = "Напоминание" if len(group) == 1 else "Напоминания на одно время"
     lines = [heading, ""]
     for claim in group:
-        lines.append(f"• {claim.name}: {_display_quantity(claim.quantity)} {claim.unit_label}")
+        lines.append(
+            f"• {claim.name}: {_display_quantity(claim.quantity)} "
+            f"{_display_unit_label(claim.unit_label)}"
+        )
     lines.extend(
         [
             "",
@@ -149,6 +152,16 @@ def _render_keyboard(group: list[DeliveryClaim]) -> InlineKeyboardMarkup:
 
 def _display_quantity(value: Decimal) -> str:
     return format(value, "f").rstrip("0").rstrip(".") if "." in format(value, "f") else str(value)
+
+
+def _display_unit_label(value: str) -> str:
+    return {
+        "capsule": "капсула",
+        "tablet": "таблетка",
+        "softgel": "мягкая капсула",
+        "scoop": "мерная ложка",
+        "drop": "капля",
+    }.get(value, value)
 
 
 def _utc_now(value: datetime | None) -> datetime:
