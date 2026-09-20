@@ -733,7 +733,12 @@ CONTENTS: Final[tuple[NutrientCardContent, ...]] = (
     _content("selenium", "Selenium", "se", ("selenium",)),
     _content("vitamin_b6", "Vitamin B6", "b6", ("vitamin_b6",)),
     _content("vitamin_b12", "Vitamin B12 / cobalamin", "b12", ("vitamin_b12",)),
-    _content("folate", "Folate / folic acid", "fol", ("folate_dfe", "folic_acid")),
+    _content(
+        "folate",
+        "Folate / folic acid",
+        "fol",
+        ("folate_dfe", "folic_acid", "supplemental_folate"),
+    ),
     _content("iron", "Iron", "fe", ("iron",)),
     _content("calcium", "Calcium", "ca", ("calcium",)),
     _content("omega_3", "Omega-3 / EPA / DHA", "o3", ("epa_plus_dha",)),

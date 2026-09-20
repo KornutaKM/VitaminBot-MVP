@@ -254,7 +254,7 @@ def test_adversarial_06_folate_food_basis_does_not_collapse_into_supplement_ul()
     folic_ul = tuple(
         snapshot
         for snapshot in binding.references
-        if snapshot.subject_key == "folic_acid"
+        if snapshot.subject_key == "supplemental_folate"
         and snapshot.reference_type == ReferenceType.UL.value
     )
     assert folic_ul
@@ -268,7 +268,13 @@ def test_adversarial_06_folate_food_basis_does_not_collapse_into_supplement_ul()
 def test_adversarial_07_iron_safe_level_is_not_rendered_as_ul() -> None:
     render = NutrientCardRenderer().render_current(
         "iron",
-        _context("ctx:iron", exposure=_total_exposure()),
+        _context(
+            "ctx:iron",
+            exposure=ExposureContext(
+                exposure_basis=ExposureBasis.TOTAL_INTAKE,
+                under_medical_supervision=False,
+            ),
+        ),
     )
 
     safe_level = _reference(render, ReferenceType.SAFE_LEVEL)
@@ -462,7 +468,8 @@ def test_adversarial_19_medication_no_result_never_becomes_no_interaction() -> N
     assert any(
         "not a 'no interaction' result" in item for item in render.envelope.non_droppable_warnings
     )
-    assert "no interaction." not in render.screen.text.lower()
+    assert "this is not a 'no interaction' result" in render.screen.text.lower()
+    assert "no interaction found" not in render.screen.text.lower()
 
 
 def test_adversarial_20_source_supersession_invalidates_current_but_history_reproduces() -> None:
@@ -671,10 +678,12 @@ def test_bot_native_nutrient_command_and_callbacks_need_no_mini_app() -> None:
     )
 
     assert application.bot_data["kir146_controller"] is nutrient_controller
-    commands = [
-        handler.command for handler in application.handlers[0] if hasattr(handler, "command")
-    ]
-    assert any("nutrient" in command for command in commands)
+    commands = {
+        command
+        for handler in application.handlers[0]
+        for command in getattr(handler, "commands", frozenset())
+    }
+    assert "nutrient" in commands
 
     screen = nutrient_controller.list_cards()
     callbacks = [button.callback_data for row in screen.rows for button in row]
