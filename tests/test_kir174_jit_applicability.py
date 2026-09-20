@@ -25,9 +25,7 @@ from vitaminbot.persistence.kir174 import KIR174Store
 
 
 @pytest.fixture
-def applicability_stack() -> Iterator[
-    tuple[str, KIR116Store, KIR174Store, KIR174Controller, UUID]
-]:
+def applicability_stack() -> Iterator[tuple[str, KIR116Store, KIR174Store, KIR174Controller, UUID]]:
     database_url = os.getenv("DATABASE_URL")
     if database_url is None:
         pytest.skip("DATABASE_URL is required for KIR-174 integration tests")
@@ -42,9 +40,7 @@ def applicability_stack() -> Iterator[
         yield schema, base_store, store, controller, user_id
     finally:
         with psycopg.connect(database_url, autocommit=True) as conn:
-            conn.execute(
-                sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(sql.Identifier(schema))
-            )
+            conn.execute(sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(sql.Identifier(schema)))
 
 
 def _button(screen: Screen, label: str) -> str:
