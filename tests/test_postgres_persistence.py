@@ -533,3 +533,106 @@ def test_candidate_selection_requires_explicit_confirmation(
             WHERE candidate_set_id = 'candidate-set:2'
             """
         ).fetchone() == ("confirmed", "candidate:active")
+
+
+def test_confirmed_candidate_must_be_active_and_cannot_be_excluded(
+    postgres_schema: tuple[str, str],
+) -> None:
+    database_url, schema = postgres_schema
+    user_id = uuid4()
+
+    with _connect(database_url, schema) as conn:
+        conn.execute(
+            """
+            INSERT INTO source_records (
+                source_id,
+                authority,
+                source_type,
+                title,
+                stable_identifier,
+                version,
+                retrieved_on
+            )
+            VALUES (
+                'source:active-candidate',
+                'Catalog',
+                'secondary_authoritative',
+                'Candidate source',
+                'catalog:active-test',
+                '1',
+                DATE '2026-09-20'
+            )
+            """
+        )
+        conn.execute("INSERT INTO users (user_id) VALUES (%s)", (user_id,))
+        conn.execute(
+            """
+            INSERT INTO candidate_resolutions (
+                candidate_set_id,
+                user_id,
+                confirmation_state,
+                scientific_resolution_state
+            )
+            VALUES ('candidate-set:active', %s, 'unconfirmed', 'unresolved')
+            """,
+            (user_id,),
+        )
+        conn.execute(
+            """
+            INSERT INTO entity_candidates (
+                candidate_set_id,
+                candidate_id,
+                canonical_entity_id,
+                source_id,
+                state
+            )
+            VALUES
+                (
+                    'candidate-set:active',
+                    'candidate:active',
+                    'formulation:active',
+                    'source:active-candidate',
+                    'active'
+                ),
+                (
+                    'candidate-set:active',
+                    'candidate:excluded',
+                    'formulation:excluded',
+                    'source:active-candidate',
+                    'excluded'
+                )
+            """
+        )
+
+        with pytest.raises(psycopg.errors.CheckViolation):
+            with conn.transaction():
+                conn.execute(
+                    """
+                    UPDATE candidate_resolutions
+                    SET confirmation_state = 'confirmed',
+                        selected_candidate_id = 'candidate:excluded'
+                    WHERE candidate_set_id = 'candidate-set:active'
+                    """
+                )
+
+        with conn.transaction():
+            conn.execute(
+                """
+                UPDATE candidate_resolutions
+                SET confirmation_state = 'confirmed',
+                    selected_candidate_id = 'candidate:active'
+                WHERE candidate_set_id = 'candidate-set:active'
+                """
+            )
+
+        with pytest.raises(psycopg.errors.CheckViolation):
+            with conn.transaction():
+                conn.execute(
+                    """
+                    UPDATE entity_candidates
+                    SET state = 'excluded'
+                    WHERE candidate_set_id = 'candidate-set:active'
+                      AND candidate_id = 'candidate:active'
+                    """
+                )
+
