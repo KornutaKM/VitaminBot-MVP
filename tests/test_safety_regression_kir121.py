@@ -72,7 +72,6 @@ from vitaminbot.nutrition.rules import (
     rule_result_is_stale,
 )
 
-
 CONTEXT_REVISION = "kir121:ctx:v1"
 
 
