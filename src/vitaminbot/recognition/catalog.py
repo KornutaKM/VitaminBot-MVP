@@ -126,6 +126,11 @@ def _require_nonblank(value: str, field_name: str) -> None:
         raise CatalogContractError(f"{field_name} must not be blank")
 
 
+def _require_optional_nonblank(value: str | None, field_name: str) -> None:
+    if value is not None:
+        _require_nonblank(value, field_name)
+
+
 def _require_aware(value: datetime, field_name: str) -> None:
     if value.tzinfo is None or value.utcoffset() is None:
         raise CatalogContractError(f"{field_name} must be timezone-aware")
@@ -227,13 +232,9 @@ class SourcedCandidateField:
             _require_nonblank(self.provider_record_id, "provider_record_id")
         if self.provider_updated_at is not None:
             _require_aware(self.provider_updated_at, "provider_updated_at")
-        for field_name, value in (
-            ("source_url", self.source_url),
-            ("license_class", self.license_class),
-            ("rights_note", self.rights_note),
-        ):
-            if value is not None:
-                _require_nonblank(value, field_name)
+        _require_optional_nonblank(self.source_url, "source_url")
+        _require_optional_nonblank(self.license_class, "license_class")
+        _require_optional_nonblank(self.rights_note, "rights_note")
         if any(not conflict.strip() for conflict in self.conflicts):
             raise CatalogContractError("field conflicts must not contain blank values")
 
@@ -260,13 +261,9 @@ class ImageCandidate:
         ):
             _require_nonblank(value, field_name)
         _require_aware(self.retrieved_at, "retrieved_at")
-        for field_name, value in (
-            ("provider_record_id", self.provider_record_id),
-            ("image_role", self.image_role),
-            ("rights_note", self.rights_note),
-        ):
-            if value is not None:
-                _require_nonblank(value, field_name)
+        _require_optional_nonblank(self.provider_record_id, "provider_record_id")
+        _require_optional_nonblank(self.image_role, "image_role")
+        _require_optional_nonblank(self.rights_note, "rights_note")
 
 
 @dataclass(frozen=True, slots=True)
@@ -335,14 +332,13 @@ class ProviderLookupResult:
         ):
             _require_nonblank(value, field_name)
         _require_aware(self.retrieved_at, "retrieved_at")
-        for field_name, value in (
-            ("raw_response_reference_or_hash", self.raw_response_reference_or_hash),
-            ("provider_error", self.provider_error),
-            ("license_class", self.license_class),
-            ("rights_note", self.rights_note),
-        ):
-            if value is not None:
-                _require_nonblank(value, field_name)
+        _require_optional_nonblank(
+            self.raw_response_reference_or_hash,
+            "raw_response_reference_or_hash",
+        )
+        _require_optional_nonblank(self.provider_error, "provider_error")
+        _require_optional_nonblank(self.license_class, "license_class")
+        _require_optional_nonblank(self.rights_note, "rights_note")
 
         if self.result_state is ProviderResultState.NO_MATCH and self.candidates:
             raise CatalogContractError("no_match provider result cannot contain candidates")
