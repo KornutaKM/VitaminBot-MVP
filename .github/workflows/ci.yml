@@ -35,11 +35,7 @@ jobs:
           python -m pip install -e ".[dev]"
 
       - name: Ruff lint
-        shell: bash
-        run: |
-          ruff check tests/test_safety_regression_kir121.py --fix || true
-          git diff -- tests/test_safety_regression_kir121.py
-          exit 1
+        run: ruff check .
 
       - name: Ruff format
         run: ruff format --check .
