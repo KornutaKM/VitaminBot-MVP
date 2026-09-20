@@ -1802,9 +1802,7 @@ def evaluate_rule_engine(
     ruleset: RuleSet = DEFAULT_RULESET,
 ) -> RuleEngineResult:
     if aggregation is not None and aggregation.context_revision != context.context_revision:
-        raise RuleDataError(
-            "daily aggregation revision differs from evaluation context revision"
-        )
+        raise RuleDataError("daily aggregation revision differs from evaluation context revision")
 
     global_reasons: list[GlobalReason] = []
     if context.medication_context_present:
