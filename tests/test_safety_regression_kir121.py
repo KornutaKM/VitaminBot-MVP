@@ -1,3 +1,5 @@
+import json
+from dataclasses import FrozenInstanceError, dataclass, replace
 from decimal import Decimal
 
 import pytest
@@ -16,6 +18,7 @@ from vitaminbot.domain import (
 from vitaminbot.nutrition.aggregation import (
     AggregationIssue,
     ConfirmedPlannedContribution,
+    DailyAggregationResult,
     DuplicateFlagKind,
     aggregate_daily_contributions,
 )
@@ -41,11 +44,13 @@ from vitaminbot.nutrition.reference_values import (
     ExposureCoverage,
     LookupStatus,
     PopulationProfile,
+    ReferenceDataset,
     ReferenceQuery,
     ReferenceStatus,
     ReferenceType,
     SourceClass,
     compare_amount_to_reference,
+    comparison_is_stale,
     lookup_reference,
 )
 from vitaminbot.nutrition.rules import (
@@ -54,17 +59,27 @@ from vitaminbot.nutrition.rules import (
     CALCIUM_CITRATE_FORM_ID,
     IRON_ANALYTE_ID,
     ZINC_ANALYTE_ID,
+    AdministrationInstruction,
+    BoundDailyAggregation,
     EventRelation,
     GlobalReason,
+    InstructionKind,
     ItemSourceKind,
     MealContextPreference,
+    MealSlot,
+    ReferenceComparisonRequest,
+    ReferenceEvaluationStatus,
+    ResolutionPath,
     RoutineBucket,
+    RuleDataError,
+    RuleDecisionClass,
     RuleEngineGlobalStatus,
     RuleEvaluationContext,
     RuleReason,
     RuleStatus,
     RuleWarning,
     SchedulingItem,
+    SchedulingRuleResult,
     SchedulingRuleId,
     SplitAction,
     UserRoutinePreference,
@@ -756,3 +771,471 @@ def test_schedule_result_is_stale_after_context_correction() -> None:
 
     assert rule_result_is_stale(matched, context_revision=CONTEXT_REVISION) is False
     assert rule_result_is_stale(matched, context_revision="kir121:ctx:v2") is True
+
+
+@dataclass(frozen=True, slots=True)
+class _AggregationSnapshot:
+    revision: str
+    aggregation: DailyAggregationResult
+
+
+def _bind_snapshot(snapshot: _AggregationSnapshot) -> BoundDailyAggregation:
+    return BoundDailyAggregation(
+        aggregation=snapshot.aggregation,
+        context_revision=snapshot.revision,
+    )
+
+
+def _presentation_payload(result: SchedulingRuleResult) -> dict[str, object]:
+    return {
+        "status": result.status.value,
+        "decision_class": result.decision_class.value,
+        "minimum_gap_minutes": result.minimum_gap_minutes,
+        "clock_time_preference": (
+            result.clock_time_preference.value
+            if result.clock_time_preference is not None
+            else None
+        ),
+        "compatibility_claim": False,
+        "personal_safety_clearance": False,
+        "medical_necessity": False,
+        "mandatory": False,
+        "warnings": [warning.value for warning in result.warnings],
+    }
+
+
+def _assert_non_strengthening_presentation(
+    source: SchedulingRuleResult,
+    payload: dict[str, object],
+) -> None:
+    assert payload["status"] == source.status.value
+    assert payload["decision_class"] == source.decision_class.value
+
+    if source.minimum_gap_minutes is None:
+        assert payload["minimum_gap_minutes"] is None
+    if source.clock_time_preference is None:
+        assert payload["clock_time_preference"] is None
+
+    assert payload["personal_safety_clearance"] is False
+    assert payload["medical_necessity"] is False
+
+    if source.status in {
+        RuleStatus.NO_SUPPORTED_RULE_FOUND,
+        RuleStatus.INSUFFICIENT_EVIDENCE,
+        RuleStatus.BLOCKED_BY_HIGHER_PRECEDENCE,
+        RuleStatus.CANNOT_OPTIMIZE_FIXED_COMBINATION,
+    }:
+        assert payload["compatibility_claim"] is False
+
+    if source.decision_class is RuleDecisionClass.PREFERENCE:
+        assert payload["mandatory"] is False
+
+
+def test_bound_daily_aggregation_cannot_cross_snapshot_revision_for_reference_or_duplicate() -> None:
+    original = _contribution(
+        "selenium:original",
+        "instance:selenium",
+        subject_id="analyte:selenium",
+        value="200",
+        unit=Unit.MICROGRAM,
+        amount_basis=AmountBasis.ANALYTE,
+    )
+    retry = _contribution(
+        "selenium:retry",
+        "instance:selenium",
+        subject_id="analyte:selenium",
+        value="200",
+        unit=Unit.MICROGRAM,
+        amount_basis=AmountBasis.ANALYTE,
+    )
+    aggregation = aggregate_daily_contributions((original, retry))
+    snapshot = _AggregationSnapshot(
+        revision="kir121:snapshot:v1",
+        aggregation=aggregation,
+    )
+    bound = _bind_snapshot(snapshot)
+    aggregate = aggregation.aggregates[0]
+
+    query_v1 = ReferenceQuery(
+        substance_key="selenium",
+        reference_type=ReferenceType.UL,
+        profile=_profile(),
+        exposure=ExposureContext(exposure_basis=ExposureBasis.TOTAL_INTAKE),
+        context_revision="kir121:snapshot:v1",
+    )
+    request_v1 = ReferenceComparisonRequest(
+        request_id="selenium-ul-v1",
+        aggregate_key=aggregate.key,
+        query=query_v1,
+    )
+    v1 = evaluate_rule_engine(
+        RuleEvaluationContext(
+            context_revision="kir121:snapshot:v1",
+            items=(),
+        ),
+        aggregation=bound,
+        reference_requests=(request_v1,),
+    )
+
+    assert len(v1.duplicate_results) == 1
+    assert v1.duplicate_results[0].context_revision == "kir121:snapshot:v1"
+    assert len(v1.reference_results) == 1
+    assert v1.reference_results[0].status is ReferenceEvaluationStatus.EVALUATED
+    assert v1.reference_results[0].context_revision == "kir121:snapshot:v1"
+
+    query_v2 = ReferenceQuery(
+        substance_key="selenium",
+        reference_type=ReferenceType.UL,
+        profile=_profile(),
+        exposure=ExposureContext(exposure_basis=ExposureBasis.TOTAL_INTAKE),
+        context_revision="kir121:snapshot:v2",
+    )
+    request_v2 = ReferenceComparisonRequest(
+        request_id="selenium-ul-v2",
+        aggregate_key=aggregate.key,
+        query=query_v2,
+    )
+
+    with pytest.raises(
+        RuleDataError,
+        match="daily aggregation revision differs from evaluation context revision",
+    ):
+        evaluate_rule_engine(
+            RuleEvaluationContext(
+                context_revision="kir121:snapshot:v2",
+                items=(),
+            ),
+            aggregation=bound,
+            reference_requests=(request_v2,),
+        )
+
+    with pytest.raises(FrozenInstanceError):
+        bound.context_revision = "kir121:snapshot:v2"  # type: ignore[misc]
+
+
+def test_reference_comparison_invalidates_on_context_or_dataset_revision() -> None:
+    lookup = lookup_reference(
+        EU_EFSA_REFERENCE_DATASET,
+        ReferenceQuery(
+            substance_key="selenium",
+            reference_type=ReferenceType.UL,
+            profile=_profile(),
+            exposure=ExposureContext(exposure_basis=ExposureBasis.TOTAL_INTAKE),
+            context_revision="kir121:reference:v1",
+        ),
+    )
+    comparison = compare_amount_to_reference(
+        _daily_amount(
+            subject_id="analyte:selenium",
+            value="200",
+            unit=Unit.MICROGRAM,
+            amount_basis=AmountBasis.ANALYTE,
+        ),
+        lookup,
+    )
+
+    assert (
+        comparison_is_stale(
+            comparison,
+            EU_EFSA_REFERENCE_DATASET,
+            context_revision="kir121:reference:v1",
+        )
+        is False
+    )
+    assert (
+        comparison_is_stale(
+            comparison,
+            EU_EFSA_REFERENCE_DATASET,
+            context_revision="kir121:reference:v2",
+        )
+        is True
+    )
+
+    dataset_v2 = ReferenceDataset(
+        version="kir121:reference-dataset:v2",
+        sources=EU_EFSA_REFERENCE_DATASET.sources,
+        records=tuple(
+            replace(record, dataset_version="kir121:reference-dataset:v2")
+            for record in EU_EFSA_REFERENCE_DATASET.records
+        ),
+    )
+    assert (
+        comparison_is_stale(
+            comparison,
+            dataset_v2,
+            context_revision="kir121:reference:v1",
+        )
+        is True
+    )
+
+
+@pytest.mark.parametrize("kind", [InstructionKind.PRODUCT, InstructionKind.CLINICIAN])
+def test_product_or_clinician_instruction_blocks_generic_calcium_preference(
+    kind: InstructionKind,
+) -> None:
+    calcium = _item(
+        "instruction-calcium",
+        _event_amount(
+            subject_id=CALCIUM_ANALYTE_ID,
+            value="500",
+            chemical_form_id=CALCIUM_CARBONATE_FORM_ID,
+        ),
+    )
+    instruction = AdministrationInstruction(
+        instruction_id=f"{kind.value}:calcium",
+        kind=kind,
+        item_id=calcium.item_id,
+        context_revision=CONTEXT_REVISION,
+    )
+    result = evaluate_rule_engine(
+        RuleEvaluationContext(
+            context_revision=CONTEXT_REVISION,
+            items=(calcium,),
+            instructions=(instruction,),
+        )
+    )
+    candidate = _for_rule(
+        result,
+        SchedulingRuleId.CALCIUM_CARBONATE_WITH_MEAL,
+    )[0]
+
+    assert candidate.status is RuleStatus.BLOCKED_BY_HIGHER_PRECEDENCE
+    assert candidate.reason is RuleReason.HIGHER_PRECEDENCE_INSTRUCTION
+    assert candidate.resolution_path is ResolutionPath.SURFACE_HIGHER_PRECEDENCE_INSTRUCTION
+    assert candidate.meal_context_preference is None
+
+
+def test_user_preference_plus_instruction_conflict_withholds_generic_optimization() -> None:
+    calcium = _item(
+        "user-conflict-calcium",
+        _event_amount(
+            subject_id=CALCIUM_ANALYTE_ID,
+            value="500",
+            chemical_form_id=CALCIUM_CARBONATE_FORM_ID,
+        ),
+    )
+    instruction = AdministrationInstruction(
+        instruction_id="product:calcium",
+        kind=InstructionKind.PRODUCT,
+        item_id=calcium.item_id,
+        context_revision=CONTEXT_REVISION,
+    )
+    preference = UserRoutinePreference(
+        preference_id="user:evening-calcium",
+        item_id=calcium.item_id,
+        bucket=RoutineBucket.EVENING,
+        context_revision=CONTEXT_REVISION,
+    )
+    result = evaluate_rule_engine(
+        RuleEvaluationContext(
+            context_revision=CONTEXT_REVISION,
+            items=(calcium,),
+            instructions=(instruction,),
+            instruction_conflict_item_ids=(calcium.item_id,),
+            user_preferences=(preference,),
+        )
+    )
+    candidate = _for_rule(
+        result,
+        SchedulingRuleId.CALCIUM_CARBONATE_WITH_MEAL,
+    )[0]
+
+    assert candidate.status is RuleStatus.BLOCKED_BY_HIGHER_PRECEDENCE
+    assert candidate.reason is RuleReason.CONFLICTING_HIGHER_PRECEDENCE_INSTRUCTIONS
+    assert candidate.decision_class is RuleDecisionClass.INDETERMINATE
+    assert candidate.meal_context_preference is None
+    assert candidate.clock_time_preference is None
+
+
+def test_vitamin_d_fat_meal_rule_is_soft_and_has_no_clock_time_requirement() -> None:
+    vitamin_d = _item(
+        "vitamin-d-soft",
+        _event_amount(
+            subject_id=VITAMIN_D_ANALYTE_ID,
+            value="25",
+            unit=Unit.MICROGRAM,
+            amount_basis=AmountBasis.ANALYTE,
+        ),
+    )
+    slot = MealSlot(
+        slot_id="meal:with-fat",
+        context_revision=CONTEXT_REVISION,
+        is_meal_or_snack=True,
+        contains_dietary_fat=True,
+    )
+    result = evaluate_rule_engine(
+        RuleEvaluationContext(
+            context_revision=CONTEXT_REVISION,
+            items=(vitamin_d,),
+            meal_slots=(slot,),
+        )
+    )
+    matched = next(
+        candidate
+        for candidate in _for_rule(
+            result,
+            SchedulingRuleId.VD_WITH_FAT_MEAL_PREFERENCE,
+        )
+        if candidate.status is RuleStatus.MATCHED_PREFERENCE
+    )
+
+    assert matched.decision_class is RuleDecisionClass.PREFERENCE
+    assert (
+        matched.meal_context_preference
+        is MealContextPreference.MEAL_OR_SNACK_WITH_SOME_FAT
+    )
+    assert matched.preferred_slot_ids == ("meal:with-fat",)
+    assert matched.clock_time_preference is None
+    assert matched.minimum_gap_minutes is None
+    assert matched.medical_necessity_claim_allowed is False
+    assert RuleWarning.PREFERENCE_NOT_MEDICAL_NECESSITY in matched.warnings
+
+
+def test_calcium_split_preference_conserves_confirmed_amount_and_unit_count() -> None:
+    calcium = _item(
+        "conserved-calcium",
+        _event_amount(subject_id=CALCIUM_ANALYTE_ID, value="1000"),
+        units="2",
+        schedulable=True,
+    )
+    before_units = calcium.confirmed_consumption_units
+    before_amounts = tuple(
+        (amount.subject_id, amount.value, amount.unit, amount.amount_basis)
+        for amount in calcium.amounts
+    )
+
+    result = _evaluate(calcium)
+    matched = next(
+        candidate
+        for candidate in _for_rule(
+            result,
+            SchedulingRuleId.CALCIUM_SPLIT_EVENT_PREFERENCE,
+        )
+        if candidate.status is RuleStatus.MATCHED_PREFERENCE
+    )
+
+    after_amounts = tuple(
+        (amount.subject_id, amount.value, amount.unit, amount.amount_basis)
+        for amount in calcium.amounts
+    )
+    assert calcium.confirmed_consumption_units == before_units == Decimal("2")
+    assert after_amounts == before_amounts
+    assert before_amounts[0][1] == Decimal("1000")
+    assert matched.split_action is SplitAction.DISTRIBUTE_EXISTING_INTACT_UNITS
+    assert matched.personalized_dose_instruction_allowed is False
+    assert matched.minimum_gap_minutes is None
+
+
+def test_null_gap_survives_serialization_and_rejects_invented_duration() -> None:
+    calcium = _item(
+        "serialization-calcium",
+        _event_amount(subject_id=CALCIUM_ANALYTE_ID, value="300"),
+    )
+    iron = _item(
+        "serialization-iron",
+        _event_amount(subject_id=IRON_ANALYTE_ID, value="10"),
+    )
+    result = _evaluate(calcium, iron)
+    matched = next(
+        candidate
+        for candidate in _for_rule(
+            result,
+            SchedulingRuleId.CALCIUM_IRON_AVOID_SAME_EVENT,
+        )
+        if candidate.status is RuleStatus.MATCHED_PREFERENCE
+    )
+
+    payload = json.loads(json.dumps(_presentation_payload(matched)))
+    _assert_non_strengthening_presentation(matched, payload)
+    assert payload["minimum_gap_minutes"] is None
+
+    strengthened = dict(payload)
+    strengthened["minimum_gap_minutes"] = 120
+    with pytest.raises(AssertionError):
+        _assert_non_strengthening_presentation(matched, strengthened)
+
+
+def test_no_rule_and_insufficient_evidence_cannot_render_as_compatible_or_safe() -> None:
+    omega = _item(
+        "presentation-omega",
+        _event_amount(
+            subject_id="analyte:epa-plus-dha",
+            value="1000",
+            amount_basis=AmountBasis.ANALYTE,
+            chemical_form_id="chemical-form:ethyl-ester",
+        ),
+    )
+    unknown_calcium = _item(
+        "presentation-calcium",
+        _event_amount(subject_id=CALCIUM_ANALYTE_ID, value="500"),
+    )
+
+    no_rule = _evaluate(omega).scheduling_results[0]
+    insufficient = _for_rule(
+        _evaluate(unknown_calcium),
+        SchedulingRuleId.CALCIUM_CARBONATE_WITH_MEAL,
+    )[0]
+
+    assert no_rule.status is RuleStatus.NO_SUPPORTED_RULE_FOUND
+    assert insufficient.status is RuleStatus.INSUFFICIENT_EVIDENCE
+
+    for source in (no_rule, insufficient):
+        payload = _presentation_payload(source)
+        _assert_non_strengthening_presentation(source, payload)
+        assert payload["compatibility_claim"] is False
+        assert payload["personal_safety_clearance"] is False
+
+        unsafe_compatibility = dict(payload)
+        unsafe_compatibility["compatibility_claim"] = True
+        with pytest.raises(AssertionError):
+            _assert_non_strengthening_presentation(source, unsafe_compatibility)
+
+        unsafe_clearance = dict(payload)
+        unsafe_clearance["personal_safety_clearance"] = True
+        with pytest.raises(AssertionError):
+            _assert_non_strengthening_presentation(source, unsafe_clearance)
+
+
+def test_presentation_boundary_rejects_preference_strengthening_and_clock_invention() -> None:
+    vitamin_d = _item(
+        "presentation-vitamin-d",
+        _event_amount(
+            subject_id=VITAMIN_D_ANALYTE_ID,
+            value="25",
+            unit=Unit.MICROGRAM,
+            amount_basis=AmountBasis.ANALYTE,
+        ),
+    )
+    slot = MealSlot(
+        slot_id="meal:verified-fat",
+        context_revision=CONTEXT_REVISION,
+        is_meal_or_snack=True,
+        contains_dietary_fat=True,
+    )
+    result = evaluate_rule_engine(
+        RuleEvaluationContext(
+            context_revision=CONTEXT_REVISION,
+            items=(vitamin_d,),
+            meal_slots=(slot,),
+        )
+    )
+    matched = next(
+        candidate
+        for candidate in _for_rule(
+            result,
+            SchedulingRuleId.VD_WITH_FAT_MEAL_PREFERENCE,
+        )
+        if candidate.status is RuleStatus.MATCHED_PREFERENCE
+    )
+    payload = _presentation_payload(matched)
+    _assert_non_strengthening_presentation(matched, payload)
+
+    mandatory = dict(payload)
+    mandatory["mandatory"] = True
+    with pytest.raises(AssertionError):
+        _assert_non_strengthening_presentation(matched, mandatory)
+
+    invented_clock = dict(payload)
+    invented_clock["clock_time_preference"] = RoutineBucket.MORNING.value
+    with pytest.raises(AssertionError):
+        _assert_non_strengthening_presentation(matched, invented_clock)
