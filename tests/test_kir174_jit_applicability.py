@@ -9,7 +9,7 @@ import psycopg
 import pytest
 from psycopg import sql
 
-from vitaminbot.application.kir116 import Button, Screen
+from vitaminbot.application.kir116 import Screen
 from vitaminbot.application.kir146 import NutrientCardRenderer
 from vitaminbot.application.kir174 import KIR174Controller
 from vitaminbot.domain import LifeStage, SexApplicability
