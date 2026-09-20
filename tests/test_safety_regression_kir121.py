@@ -69,9 +69,14 @@ from vitaminbot.nutrition import (
 CONTEXT_REVISION = "kir121:ctx:v1"
 
 
-def _trace(*, plan_id: str | None = None, plan_version: str | None = None) -> ComputationTrace:
+def _trace(
+    *,
+    operation: str = "kir121-independent-fixture",
+    plan_id: str | None = None,
+    plan_version: str | None = None,
+) -> ComputationTrace:
     return ComputationTrace(
-        operation="kir121-independent-fixture",
+        operation=operation,
         rule_id="KIR-121",
         rule_version="1",
         plan_id=plan_id,
@@ -99,7 +104,13 @@ def _daily_amount(
         source_quantity_basis_ids=("basis:test",),
         source_amount_ids=(f"amount:{subject_id}:{value}",),
         source_ids=("source:kir121-fixture",),
-        traces=(_trace(plan_id=plan_id, plan_version=plan_version),),
+        traces=(
+            _trace(
+                operation="planned_daily_normalization",
+                plan_id=plan_id,
+                plan_version=plan_version,
+            ),
+        ),
     )
 
 
@@ -556,8 +567,13 @@ def test_fortified_food_iron_cannot_trigger_supplemental_iron_zinc_rule() -> Non
     result = _evaluate(iron, zinc)
     candidates = _for_rule(result, SchedulingRuleId.IRON25_ZINC_AVOID_SAME_EVENT)
 
-    assert not any(candidate.status is RuleStatus.MATCHED_PREFERENCE for candidate in candidates)
-    assert any(candidate.reason is RuleReason.IRON_SOURCE_NOT_SUPPLEMENT for candidate in candidates)
+    assert not any(
+        candidate.status is RuleStatus.MATCHED_PREFERENCE for candidate in candidates
+    )
+    assert any(
+        candidate.reason is RuleReason.IRON_SOURCE_NOT_SUPPLEMENT
+        for candidate in candidates
+    )
 
 
 def test_calcium_form_applicability_does_not_leak_across_forms() -> None:
@@ -673,8 +689,13 @@ def test_calcium_split_rearranges_existing_units_but_never_creates_dose() -> Non
         SchedulingRuleId.CALCIUM_SPLIT_EVENT_PREFERENCE,
     )
 
-    assert not any(candidate.status is RuleStatus.MATCHED_PREFERENCE for candidate in one)
-    assert any(candidate.reason is RuleReason.INTACT_UNITS_NOT_REARRANGEABLE for candidate in one)
+    assert not any(
+        candidate.status is RuleStatus.MATCHED_PREFERENCE for candidate in one
+    )
+    assert any(
+        candidate.reason is RuleReason.INTACT_UNITS_NOT_REARRANGEABLE
+        for candidate in one
+    )
 
     matched = next(
         candidate for candidate in two if candidate.status is RuleStatus.MATCHED_PREFERENCE
