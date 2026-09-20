@@ -676,7 +676,9 @@ class PhotoRecognitionPipeline:
             extraction=candidate.extraction,
         )
         if candidate.candidate_id != expected_candidate_id:
-            raise ProviderContractError("candidate identity does not match capture/extraction payload")
+            raise ProviderContractError(
+                "candidate identity does not match capture/extraction payload"
+            )
         if request.expected_candidate_id != candidate.candidate_id:
             raise StaleConfirmationError(
                 "confirmation candidate identity does not match current extraction candidate"
