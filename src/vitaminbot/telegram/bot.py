@@ -19,7 +19,10 @@ from telegram.ext import (
 
 from vitaminbot.application.kir116 import KIR116Controller, Screen
 from vitaminbot.application.kir120 import KIR120Controller
+from vitaminbot.application.kir146 import KIR146Controller, NutrientCardRenderer
 from vitaminbot.config import Settings
+from vitaminbot.nutrition.card_content import APPROVED_CARD_CONTENT
+from vitaminbot.nutrition.reference_values import EU_EFSA_REFERENCE_DATASET
 from vitaminbot.persistence.kir116 import KIR116Store
 from vitaminbot.persistence.kir120 import KIR120Store, RoutineTimes
 from vitaminbot.telegram.reminders import TelegramReminderRunner
@@ -32,6 +35,11 @@ def _controller(context: ContextTypes.DEFAULT_TYPE) -> KIR116Controller:
 def _schedule_controller(context: ContextTypes.DEFAULT_TYPE) -> KIR120Controller | None:
     value = context.application.bot_data.get("kir120_controller")
     return None if value is None else cast(KIR120Controller, value)
+
+
+def _nutrient_controller(context: ContextTypes.DEFAULT_TYPE) -> KIR146Controller | None:
+    value = context.application.bot_data.get("kir146_controller")
+    return None if value is None else cast(KIR146Controller, value)
 
 
 def _keyboard(screen: Screen) -> InlineKeyboardMarkup | None:
@@ -124,6 +132,28 @@ async def _help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if telegram_user_id is None:
         return
     screen = await asyncio.to_thread(_controller(context).help, telegram_user_id)
+    if _nutrient_controller(context) is not None:
+        screen = Screen(
+            text=screen.text
+            + (
+                "\n\nNutrient cards: /nutrient <name> — approved educational "
+                "content with provenance."
+            ),
+            rows=screen.rows,
+        )
+    await _reply(update, screen)
+
+
+async def _nutrient(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    telegram_user_id = _telegram_user_id(update)
+    controller = _nutrient_controller(context)
+    if telegram_user_id is None or controller is None:
+        return
+    query = " ".join(context.args).strip()
+    if query:
+        screen = await asyncio.to_thread(controller.open, telegram_user_id, query)
+    else:
+        screen = controller.list_cards()
     await _reply(update, screen)
 
 
@@ -215,8 +245,15 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     await query.answer()
     action_key = f"cb:{query.id}"
+    nutrient_controller = _nutrient_controller(context)
     schedule_controller = _schedule_controller(context)
-    if query.data.startswith("k120") and schedule_controller is not None:
+    if query.data.startswith("k146") and nutrient_controller is not None:
+        screen = await asyncio.to_thread(
+            nutrient_controller.callback,
+            telegram_user_id,
+            query.data,
+        )
+    elif query.data.startswith("k120") and schedule_controller is not None:
         screen = await asyncio.to_thread(
             schedule_controller.callback,
             telegram_user_id,
@@ -259,6 +296,7 @@ def build_application(
     controller: KIR116Controller,
     schedule_controller: KIR120Controller | None = None,
     reminder_runner: TelegramReminderRunner | None = None,
+    nutrient_controller: KIR146Controller | None = None,
 ) -> Application[Any, Any, Any, Any, Any, Any]:
     builder = ApplicationBuilder().token(token).concurrent_updates(False)
     if reminder_runner is not None:
@@ -269,6 +307,8 @@ def build_application(
         application.bot_data["kir120_controller"] = schedule_controller
     if reminder_runner is not None:
         application.bot_data["reminder_runner"] = reminder_runner
+    if nutrient_controller is not None:
+        application.bot_data["kir146_controller"] = nutrient_controller
 
     application.add_handler(CommandHandler("start", _start))
     application.add_handler(CommandHandler("add", _add))
@@ -279,6 +319,8 @@ def build_application(
         application.add_handler(CommandHandler("plan", _plan))
         application.add_handler(CommandHandler("history", _history))
     application.add_handler(CommandHandler("help", _help))
+    if nutrient_controller is not None:
+        application.add_handler(CommandHandler("nutrient", _nutrient))
     application.add_handler(CommandHandler("cancel", _cancel))
     application.add_handler(CallbackQueryHandler(_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, _text))
@@ -312,11 +354,17 @@ def main() -> None:
         kir120_store,
         poll_seconds=settings.reminder_poll_seconds,
     )
+    nutrient_renderer = NutrientCardRenderer(
+        registry=APPROVED_CARD_CONTENT,
+        dataset=EU_EFSA_REFERENCE_DATASET,
+    )
+    nutrient_controller = KIR146Controller(nutrient_renderer)
     application = build_application(
         settings.telegram_bot_token,
         kir116_controller,
         kir120_controller,
         reminder_runner,
+        nutrient_controller,
     )
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
