@@ -1,0 +1,96 @@
+{
+  "schema_version": "1.0.0",
+  "extraction_id": "gold:missing-serving-information",
+  "acquisition_method": "photo",
+  "source_assets": [
+    {
+      "asset_id": "img:1",
+      "source_kind": "label_image",
+      "reference": "fixture://missing-serving-information"
+    }
+  ],
+  "raw_label_text": "Product: Vitamin C Example\nVitamin C 250 mg",
+  "product_identity": {
+    "product_name": {
+      "field_id": "product_name",
+      "source_kind": "label_image",
+      "presence_state": "present",
+      "raw_text": "Vitamin C Example",
+      "normalized_candidate": "Vitamin C Example",
+      "source_regions": [
+        {
+          "asset_id": "img:1",
+          "region_id": "r:product",
+          "bbox": [0.10, 0.02, 0.70, 0.10]
+        }
+      ],
+      "confidence": {"band": "high"}
+    }
+  },
+  "serving": {
+    "serving_size": {
+      "field_id": "serving_size",
+      "source_kind": "label_image",
+      "presence_state": "not_visible",
+      "raw_text": null,
+      "normalized_candidate": null,
+      "ambiguity_codes": ["missing_serving_information"],
+      "semantic_state": "unresolved",
+      "downstream_eligibility": "blocked_unresolved"
+    }
+  },
+  "rows": [
+    {
+      "row_id": "row:vitamin-c",
+      "row_raw_text": "Vitamin C 250 mg",
+      "printed_name": {
+        "field_id": "row:vitamin-c:name",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "Vitamin C",
+        "normalized_candidate": "vitamin c",
+        "source_regions": [
+          {
+            "asset_id": "img:1",
+            "region_id": "r:vitamin-c-name",
+            "bbox": [0.08, 0.40, 0.36, 0.47]
+          }
+        ]
+      },
+      "quantity": {
+        "field_id": "row:vitamin-c:quantity",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "250",
+        "normalized_candidate": "250",
+        "source_regions": [
+          {
+            "asset_id": "img:1",
+            "region_id": "r:vitamin-c-quantity",
+            "bbox": [0.38, 0.40, 0.50, 0.47]
+          }
+        ]
+      },
+      "unit": {
+        "field_id": "row:vitamin-c:unit",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "mg",
+        "normalized_candidate": "mg",
+        "source_regions": [
+          {
+            "asset_id": "img:1",
+            "region_id": "r:vitamin-c-unit",
+            "bbox": [0.51, 0.40, 0.59, 0.47]
+          }
+        ]
+      },
+      "ambiguity_codes": ["missing_serving_information"],
+      "semantic_state": "unresolved",
+      "downstream_eligibility": "blocked_unresolved"
+    }
+  ],
+  "record_ambiguities": ["missing_serving_information"],
+  "record_state": "user_resolution_required",
+  "confirmation_revision": 0
+}
