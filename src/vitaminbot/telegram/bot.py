@@ -19,12 +19,15 @@ from telegram.ext import (
 
 from vitaminbot.application.kir116 import KIR116Controller, Screen
 from vitaminbot.application.kir120 import KIR120Controller
+from vitaminbot.application.kir122 import KIR122Controller
 from vitaminbot.application.kir146 import KIR146Controller, NutrientCardRenderer
 from vitaminbot.config import Settings
 from vitaminbot.nutrition.card_content import APPROVED_CARD_CONTENT
 from vitaminbot.nutrition.reference_values import EU_EFSA_REFERENCE_DATASET
 from vitaminbot.persistence.kir116 import KIR116Store
 from vitaminbot.persistence.kir120 import KIR120Store, RoutineTimes
+from vitaminbot.persistence.kir122 import KIR122Store
+from vitaminbot.telegram.presentation import localize_operational_screen
 from vitaminbot.telegram.reminders import TelegramReminderRunner
 
 
@@ -253,6 +256,34 @@ async def _history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _reply(update, _operational_screen(context, screen))
 
 
+
+async def _composition(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    telegram_user_id = _telegram_user_id(update)
+    controller = _vertical_controller(context)
+    if telegram_user_id is None or controller is None:
+        return
+    screen = await asyncio.to_thread(controller.composition, telegram_user_id)
+    await _reply(update, screen)
+
+
+async def _totals(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    telegram_user_id = _telegram_user_id(update)
+    controller = _vertical_controller(context)
+    if telegram_user_id is None or controller is None:
+        return
+    screen = await asyncio.to_thread(controller.totals, telegram_user_id)
+    await _reply(update, screen)
+
+
+async def _safety(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    telegram_user_id = _telegram_user_id(update)
+    controller = _vertical_controller(context)
+    if telegram_user_id is None or controller is None:
+        return
+    screen = await asyncio.to_thread(controller.safety, telegram_user_id)
+    await _reply(update, screen)
+
+
 async def _text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     telegram_user_id = _telegram_user_id(update)
     message = update.effective_message
@@ -464,30 +495,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-async def _composition(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    telegram_user_id = _telegram_user_id(update)
-    controller = _vertical_controller(context)
-    if telegram_user_id is None or controller is None:
-        return
-    screen = await asyncio.to_thread(controller.composition, telegram_user_id)
-    await _reply(update, screen)
-
-
-async def _totals(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    telegram_user_id = _telegram_user_id(update)
-    controller = _vertical_controller(context)
-    if telegram_user_id is None or controller is None:
-        return
-    screen = await asyncio.to_thread(controller.totals, telegram_user_id)
-    await _reply(update, screen)
-
-
-async def _safety(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    telegram_user_id = _telegram_user_id(update)
-    controller = _vertical_controller(context)
-    if telegram_user_id is None or controller is None:
-        return
-    screen = await asyncio.to_thread(controller.safety, telegram_user_id)
-    await _reply(update, screen)
-
