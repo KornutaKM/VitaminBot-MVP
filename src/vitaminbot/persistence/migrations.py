@@ -67,9 +67,7 @@ def _prepare_schema(conn: Connection[Any], schema: str) -> None:
         raise MigrationError("schema must not be blank")
 
     if schema != "public":
-        conn.execute(
-            sql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(sql.Identifier(schema))
-        )
+        conn.execute(sql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(sql.Identifier(schema)))
     conn.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(schema)))
 
 
@@ -109,10 +107,7 @@ def migrate(database_url: str, *, schema: str = "public") -> tuple[str, ...]:
                 ).fetchone()
                 if existing is not None:
                     existing_name, existing_checksum = existing
-                    if (
-                        existing_name != migration.name
-                        or existing_checksum != migration.checksum
-                    ):
+                    if existing_name != migration.name or existing_checksum != migration.checksum:
                         raise MigrationDriftError(
                             f"migration {migration.version} differs from applied checksum"
                         )
