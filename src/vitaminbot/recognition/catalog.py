@@ -825,7 +825,10 @@ class CatalogDiscoveryService:
 
         if (
             result.result_state is ProviderResultState.PARTIAL_MATCH
-            or any(self._candidate_requires_freshness_fallback(candidate) for candidate in candidates)
+            or any(
+                self._candidate_requires_freshness_fallback(candidate)
+                for candidate in candidates
+            )
         ):
             return self._fallback_outcome(
                 request=request,
