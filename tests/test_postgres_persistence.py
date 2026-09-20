@@ -24,11 +24,7 @@ def postgres_schema() -> Iterator[tuple[str, str]]:
         yield database_url, schema
     finally:
         with psycopg.connect(database_url, autocommit=True) as conn:
-            conn.execute(
-                sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(
-                    sql.Identifier(schema)
-                )
-            )
+            conn.execute(sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(sql.Identifier(schema)))
 
 
 def _connect(database_url: str, schema: str) -> psycopg.Connection[tuple[object, ...]]:
@@ -635,4 +631,3 @@ def test_confirmed_candidate_must_be_active_and_cannot_be_excluded(
                       AND candidate_id = 'candidate:active'
                     """
                 )
-
