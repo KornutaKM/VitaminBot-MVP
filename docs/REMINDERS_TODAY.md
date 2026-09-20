@@ -44,7 +44,10 @@ not silently choose a fold or shift the user's explicit time.
 
 ## Reminder execution
 
-The worker persists a delivery claim before any Telegram send.
+The worker persists a delivery claim before any Telegram send. Claims are validated
+once for grouping and then **every delivery is revalidated again immediately before
+its group's actual Telegram send**. Cancelled, expired, stale, or non-pending claims
+are removed from that final group; an empty group is not sent.
 
 - duplicate execution keys cannot create a second claim;
 - successful delivery is transport state only;

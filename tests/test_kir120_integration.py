@@ -11,6 +11,7 @@ import psycopg
 import pytest
 from psycopg import sql
 
+import vitaminbot.telegram.reminders as reminder_module
 from vitaminbot.application.kir116 import KIR116Controller, Screen
 from vitaminbot.application.kir120 import KIR120Controller
 from vitaminbot.persistence import migrate
@@ -24,7 +25,6 @@ from vitaminbot.persistence.kir120 import (
 )
 from vitaminbot.telegram.bot import build_application
 from vitaminbot.telegram.reminders import TelegramReminderRunner
-import vitaminbot.telegram.reminders as reminder_module
 
 
 @pytest.fixture
