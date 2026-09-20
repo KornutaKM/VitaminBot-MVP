@@ -210,10 +210,7 @@ def test_clean_account_vertical_flow_is_snapshot_bound_and_fail_closed(
     assert all(item.resolution_path for item in envelopes)
     assert all(item.non_droppable_warnings for item in envelopes)
     assert all(item.context_revision.startswith("kir122:") for item in envelopes)
-    assert any(
-        item.evidence_state is SafetyEvidenceState.MISSING
-        for item in envelopes
-    )
+    assert any(item.evidence_state is SafetyEvidenceState.MISSING for item in envelopes)
 
     safety = vertical.safety(telegram_user_id)
     assert "Статус: Не могу оценить" in safety.text
@@ -246,9 +243,7 @@ def test_clean_account_vertical_flow_is_snapshot_bound_and_fail_closed(
         telegram_user_id,
         now=datetime(2026, 9, 20, 11, 0, tzinfo=UTC),
     )
-    localized_today = localize_operational_screen(
-        vertical.decorate_operational_screen(today)
-    )
+    localized_today = localize_operational_screen(vertical.decorate_operational_screen(today))
     assert localized_today.text.startswith("Сегодня")
     assert "Example Magnesium" in localized_today.text
     assert "[ожидает]" in localized_today.text
@@ -260,15 +255,11 @@ def test_clean_account_vertical_flow_is_snapshot_bound_and_fail_closed(
         action_key="cb:today:taken",
         now=datetime(2026, 9, 20, 12, 0, tzinfo=UTC),
     )
-    localized_taken = localize_operational_screen(
-        vertical.decorate_operational_screen(taken)
-    )
+    localized_taken = localize_operational_screen(vertical.decorate_operational_screen(taken))
     assert "[принято]" in localized_taken.text
 
     history = schedule.history(telegram_user_id)
-    localized_history = localize_operational_screen(
-        vertical.decorate_operational_screen(history)
-    )
+    localized_history = localize_operational_screen(vertical.decorate_operational_screen(history))
     assert localized_history.text.startswith("История")
     assert "принято" in localized_history.text
     assert "Доставка напоминания не доказывает приём" in localized_history.text
@@ -286,9 +277,7 @@ def test_operational_projection_is_russian_first_without_changing_callbacks(
     telegram_user_id = 122002
 
     raw = base.start(telegram_user_id)
-    projected = localize_operational_screen(
-        vertical.decorate_operational_screen(raw)
-    )
+    projected = localize_operational_screen(vertical.decorate_operational_screen(raw))
     assert projected.text.startswith("VitaminBot")
     assert "Добавьте свои добавки" in projected.text
     assert "medical dose recommendations" not in projected.text
@@ -299,8 +288,6 @@ def test_operational_projection_is_russian_first_without_changing_callbacks(
         "a",
         action_key="cb:projection:add",
     )
-    add = localize_operational_screen(
-        vertical.decorate_operational_screen(add_raw)
-    )
+    add = localize_operational_screen(vertical.decorate_operational_screen(add_raw))
     assert "Сейчас доступен ручной ввод" in add.text
     assert _button(add, "Ввести вручную") == "m"
