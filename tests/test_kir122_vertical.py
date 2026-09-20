@@ -81,7 +81,7 @@ def _prepare_planned_manual(
         _button(review, "Confirm entry"),
         action_key=f"{telegram_user_id}:confirm",
     )
-    plan_prompt = kir116.callback(
+    kir116.callback(
         telegram_user_id,
         _button(confirmed, "Add / edit plan"),
         action_key=f"{telegram_user_id}:plan",
