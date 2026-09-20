@@ -73,7 +73,6 @@ from vitaminbot.nutrition.reference_values import (
     comparison_is_stale,
     lookup_reference,
 )
-
 from vitaminbot.nutrition.rules import (
     CALCIUM_ANALYTE_ID,
     CALCIUM_CARBONATE_FORM_ID,
