@@ -98,16 +98,18 @@ class TelegramReminderRunner:
 
 
 def _render_group(group: list[DeliveryClaim]) -> str:
-    heading = "Reminder" if len(group) == 1 else "Reminders due together"
+    heading = "Напоминание" if len(group) == 1 else "Напоминания на одно время"
     lines = [heading, ""]
     for claim in group:
-        lines.append(f"• {claim.name}: {_display_quantity(claim.quantity)} {claim.unit_label}")
+        lines.append(\n            f"• {claim.name}: {_display_quantity(claim.quantity)} " \
+            f"{_display_unit_label(claim.unit_label)}"\n        )
     lines.extend(
         [
             "",
-            "These quantities come from your confirmed plan.",
-            "Reminder delivery does not mean Taken.",
-            "Timing source: your routine preference; no evidence-backed planning note is attached.",
+            "Количество взято из вашего подтверждённого плана.",
+            "Доставка напоминания не означает, что приём состоялся.",
+            "Источник времени: ваша настройка режима; "
+            "доказательное пояснение к планированию не привязано.",
         ]
     )
     return "\n".join(lines)
@@ -118,20 +120,20 @@ def _render_keyboard(group: list[DeliveryClaim]) -> InlineKeyboardMarkup:
     for claim in group:
         action_row = [
             InlineKeyboardButton(
-                f"Taken · {claim.name[:18]}",
+                f"Принято · {claim.name[:18]}",
                 callback_data=f"k120t:{claim.occurrence_id}:{claim.occurrence_revision}",
             )
         ]
         if claim.later_count == 0:
             action_row.append(
                 InlineKeyboardButton(
-                    "Later",
+                    "Позже",
                     callback_data=f"k120l:{claim.occurrence_id}:{claim.occurrence_revision}",
                 )
             )
         action_row.append(
             InlineKeyboardButton(
-                "Skip",
+                "Пропустить",
                 callback_data=f"k120s:{claim.occurrence_id}:{claim.occurrence_revision}",
             )
         )
@@ -139,7 +141,7 @@ def _render_keyboard(group: list[DeliveryClaim]) -> InlineKeyboardMarkup:
         rows.append(
             [
                 InlineKeyboardButton(
-                    f"Why? · {claim.name[:20]}",
+                    f"Почему? · {claim.name[:20]}",
                     callback_data=f"k120w:{claim.occurrence_id}:{claim.occurrence_revision}",
                 )
             ]
@@ -149,6 +151,16 @@ def _render_keyboard(group: list[DeliveryClaim]) -> InlineKeyboardMarkup:
 
 def _display_quantity(value: Decimal) -> str:
     return format(value, "f").rstrip("0").rstrip(".") if "." in format(value, "f") else str(value)
+
+
+def _display_unit_label(value: str) -> str:
+    return {
+        "capsule": "капсула",
+        "tablet": "таблетка",
+        "softgel": "мягкая капсула",
+        "scoop": "мерная ложка",
+        "drop": "капля",
+    }.get(value, value)
 
 
 def _utc_now(value: datetime | None) -> datetime:
