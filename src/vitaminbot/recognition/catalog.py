@@ -738,12 +738,16 @@ class CatalogDiscoveryService:
             return result
         except ProviderUnavailableError as exc:
             state = ProviderResultState.PROVIDER_UNAVAILABLE
+            detail = str(exc)
         except ProviderRateLimitedError as exc:
             state = ProviderResultState.RATE_LIMITED
+            detail = str(exc)
         except ProviderAccessDeniedError as exc:
             state = ProviderResultState.ACCESS_DENIED
+            detail = str(exc)
         except (ProviderMalformedResponseError, CatalogContractError) as exc:
             state = ProviderResultState.MALFORMED_RESPONSE
+            detail = str(exc)
 
         retrieved_at = self._clock()
         _require_aware(retrieved_at, "clock value")
@@ -751,7 +755,7 @@ class CatalogDiscoveryService:
             provider,
             request,
             state=state,
-            detail=str(exc) or state.value,
+            detail=detail or state.value,
             retrieved_at=retrieved_at,
         )
 
