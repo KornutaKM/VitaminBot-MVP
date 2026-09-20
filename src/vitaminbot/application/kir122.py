@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
-from vitaminbot.application.kir116 import Button, KIR116Controller, Screen
+from vitaminbot.application.kir116 import Button, Screen
 from vitaminbot.domain import (
     AmountBasis,
     AmountRecord,
@@ -537,7 +537,7 @@ class KIR122Controller:
         )
 
     @staticmethod
-    def _review_screen(session: object) -> Screen:
+    def _review_screen(session: CompositionSession) -> Screen:
         assert session.pending_value is not None
         assert session.pending_unit is not None
         return Screen(
@@ -826,7 +826,7 @@ class KIR122Controller:
         return tuple(rows)
 
     @staticmethod
-    def _aggregate_amount(aggregate: object) -> ComputedAmount | None:
+    def _aggregate_amount(aggregate: DailyAggregate) -> ComputedAmount | None:
         if (
             not aggregate.is_complete
             or aggregate.known_total is None
@@ -878,7 +878,7 @@ class KIR122Controller:
         )
 
     @staticmethod
-    def _reference_state_text(record: object) -> str:
+    def _reference_state_text(record: ReferenceRecord) -> str:
         if record.status in {
             ReferenceStatus.ESTABLISHED_NUMERIC,
             ReferenceStatus.CONDITIONAL_NUMERIC,
