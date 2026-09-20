@@ -1,0 +1,1065 @@
+from __future__ import annotations
+
+import hashlib
+import re
+from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
+from uuid import UUID
+
+from vitaminbot.application.kir116 import Button, KIR116Controller, Screen
+from vitaminbot.domain import (
+    AmountBasis,
+    AmountRecord,
+    EvidenceStatus,
+    IntakePlan,
+    PlannedIntakeEvent,
+    QuantityBasis,
+    ResolutionStatus,
+    ServingDefinition,
+    SubjectKind,
+    Unit,
+)
+from vitaminbot.nutrition import (
+    DATASET_VERSION,
+    EU_EFSA_REFERENCE_DATASET,
+    RULESET_VERSION,
+    AggregateKey,
+    BoundDailyAggregation,
+    ComputationTrace,
+    ComputedAmount,
+    ConfirmedPlannedContribution,
+    EventRelation,
+    ExposureContext,
+    ItemSourceKind,
+    LookupStatus,
+    NormalizationOutcome,
+    PopulationProfile,
+    ReferenceLifecycle,
+    ReferenceQuery,
+    ReferenceStatus,
+    ReferenceType,
+    RuleEngineGlobalStatus,
+    RuleEvaluationContext,
+    RuleStatus,
+    RuleType,
+    SchedulingItem,
+    UnresolvedReason,
+    aggregate_daily_contributions,
+    compare_amount_to_reference,
+    evaluate_rule_engine,
+    lookup_reference,
+    normalize_per_consumption_unit,
+    normalize_planned_daily_amount,
+)
+from vitaminbot.persistence.kir116 import KIR116Store, SupplementRecord
+from vitaminbot.persistence.kir122 import (
+    DuplicateCompositionFact,
+    InvalidCompositionState,
+    KIR122Store,
+    SnapshotAmount,
+    SnapshotSupplement,
+    StaleCompositionAction,
+    VerticalSnapshot,
+)
+
+_AMOUNT_PATTERN = re.compile(
+    r"^\s*(\d{1,12}(?:[.,]\d{1,6})?)\s*(g|mg|ug|г|мг|мкг|µg|μg)\s*$",
+    re.IGNORECASE,
+)
+_UNIT_ALIASES = {
+    "g": "g",
+    "г": "g",
+    "mg": "mg",
+    "мг": "mg",
+    "ug": "ug",
+    "мкг": "ug",
+    "µg": "ug",
+    "μg": "ug",
+}
+_RU_UNIT = {"g": "г", "mg": "мг", "ug": "мкг"}
+_INTACT_UNIT_LABELS = frozenset({"capsule", "tablet", "softgel"})
+
+# The selectable identity comes from accepted KIR-115 data at runtime. This table owns
+# presentation names only; it is not a scientific conversion or reference-value source.
+_RU_SUBSTANCE_NAMES = {
+    "vitamin_d": "Витамин D",
+    "vitamin_c": "Витамин C",
+    "magnesium": "Магний",
+    "zinc": "Цинк",
+    "selenium": "Селен",
+    "vitamin_b6": "Витамин B6",
+    "vitamin_b12": "Витамин B12",
+    "iron": "Железо",
+    "calcium": "Кальций",
+    "dha": "DHA",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class VerticalView:
+    snapshot: VerticalSnapshot
+    aggregation: object
+    rule_result: object
+    item_names: dict[str, str]
+
+
+@dataclass(frozen=True, slots=True)
+class ReferencePresentation:
+    subject_name: str
+    reference_type: ReferenceType
+    state_text: str
+    comparison_text: str | None
+    source_title: str | None
+    source_url: str | None
+    source_version: str | None
+
+
+class KIR122Controller:
+    """Russian-first orchestration over accepted KIR-113/114/115/119 contracts."""
+
+    def __init__(
+        self,
+        *,
+        base_store: KIR116Store,
+        store: KIR122Store,
+    ) -> None:
+        self._base_store = base_store
+        self._store = store
+
+    def composition(self, telegram_user_id: int) -> Screen:
+        user_id = self._base_store.ensure_user(telegram_user_id)
+        records = self._base_store.list_supplements(user_id)
+        if not records:
+            return Screen(
+                text=(
+                    "Состав\n\nСначала добавьте добавку и подтвердите её название и единицу. "
+                    "Никакие значения состава не будут придуманы автоматически."
+                ),
+                rows=((Button("Добавить добавку", "a"),),),
+            )
+
+        lines = [
+            "Состав",
+            "",
+            "Выберите добавку. Здесь сохраняются только значения, которые вы явно подтвердили.",
+        ]
+        rows: list[tuple[Button, ...]] = []
+        for record in records:
+            keys = self._store.manual_substance_keys(user_id, record.instance_id)
+            suffix = f" — {len(keys)} подтверждено" if keys else " — состав не указан"
+            lines.append(f"• {record.name}{suffix}")
+            rows.append(
+                (
+                    Button(
+                        f"Состав: {record.name[:28]}",
+                        f"k122c:{self._token(record.instance_id)}:{record.revision}",
+                    ),
+                )
+            )
+        rows.append((Button("Итоги за день", "k122tot"),))
+        return Screen(text="\n".join(lines), rows=tuple(rows))
+
+    def totals(self, telegram_user_id: int) -> Screen:
+        user_id = self._base_store.ensure_user(telegram_user_id)
+        view = self._build_view(user_id)
+        aggregation = view.aggregation
+        aggregates = aggregation.aggregates
+        if not view.snapshot.supplements:
+            return Screen(
+                text=(
+                    "Итоги за день\n\nДобавок пока нет. "
+                    "Итог появляется только из подтверждённого состава и текущего плана."
+                ),
+                rows=((Button("Добавить добавку", "a"),),),
+            )
+        if not aggregates:
+            return Screen(
+                text=(
+                    "Итоги за день\n\nПока не из чего посчитать полный итог. "
+                    "Нужны подтверждённый состав и сохранённый план с количеством единиц.\n\n"
+                    "Неизвестное значение не считается нулём."
+                ),
+                rows=(
+                    (Button("Добавить состав", "k122comp"),),
+                    (Button("План", "k120p"), Button("Сегодня", "k120today")),
+                ),
+            )
+
+        names = {item.instance_id: item.name for item in view.snapshot.supplements}
+        lines = [
+            "Итоги за день",
+            "",
+            "Расчёт только из подтверждённых строк состава и текущих версий плана.",
+        ]
+        for aggregate in aggregates:
+            name = self._subject_name(aggregate.key.subject_id)
+            if aggregate.is_complete and aggregate.known_total is not None and aggregate.unit is not None:
+                total = f"{self._decimal(aggregate.known_total)} {self._unit_label(aggregate.unit)}"
+                lines.append(f"\n{name}: {total}")
+            else:
+                lines.append(f"\n{name}: итог неполный — полное значение не показываю")
+            for contributor in aggregate.contributors:
+                contributor_name = names.get(contributor.tracked_instance_id, "Подтверждённая добавка")
+                lines.append(
+                    f"  • {contributor_name}: "
+                    f"{self._decimal(contributor.normalized_value)} "
+                    f"{self._unit_label(contributor.normalized_unit)}"
+                )
+            if aggregate.issues:
+                lines.append("  Нужна проверка: один или несколько вкладов нельзя считать полными.")
+            if aggregate.suppressed_exact_repeat_ids:
+                lines.append("  Точный повтор одного и того же вклада не посчитан второй раз.")
+
+        if aggregation.unresolved_contributors:
+            lines.extend(
+                [
+                    "",
+                    "Есть неподтверждённые или неоднозначные вклады. "
+                    "Они не превращены в ноль и не добавлены к полному итогу.",
+                ]
+            )
+        return Screen(
+            text="\n".join(lines),
+            rows=(
+                (Button("Справочные значения и ограничения", "k122safe"),),
+                (Button("Почему так распределено?", "k122rules"),),
+                (Button("Сегодня", "k120today"), Button("План", "k120p")),
+                (Button("Состав", "k122comp"),),
+            ),
+        )
+
+    def rules(self, telegram_user_id: int) -> Screen:
+        user_id = self._base_store.ensure_user(telegram_user_id)
+        view = self._build_view(user_id)
+        result = view.rule_result
+
+        lines = ["Планирование", ""]
+        if result.global_status is RuleEngineGlobalStatus.WITHHELD_HIGH_RISK_CONTEXT:
+            lines.append(
+                "Автоматическое планирование остановлено: текущий контекст требует "
+                "отдельно подтверждённого правила. Это не вывод о безопасности."
+            )
+        elif not result.scheduling_results:
+            lines.append(
+                "Недостаточно подтверждённых данных для доказательного правила планирования. "
+                "Текущие Morning / Day / Evening остаются вашими организационными метками."
+            )
+        else:
+            for rule in result.scheduling_results:
+                item_names = tuple(
+                    view.item_names.get(item_id, "Подтверждённая позиция")
+                    for item_id in rule.item_ids
+                )
+                label = ", ".join(dict.fromkeys(item_names))
+                if rule.status is RuleStatus.MATCHED_PREFERENCE:
+                    if rule.event_relation is EventRelation.AVOID_SAME_EVENT:
+                        lines.append(
+                            f"• {label}: предпочтение — не размещать в одном приёме. "
+                            "Точный интервал не установлен. Это не медицинская необходимость."
+                        )
+                    elif rule.rule_type is RuleType.MEAL_CONTEXT:
+                        lines.append(
+                            f"• {label}: найдено доказательное предпочтение, связанное с едой. "
+                            "Это предпочтение, а не обязательное медицинское указание."
+                        )
+                    else:
+                        lines.append(
+                            f"• {label}: найдено доказательное предпочтение по распределению "
+                            "уже запланированных единиц. Оно не создаёт новую дозу."
+                        )
+                elif rule.status is RuleStatus.NO_SUPPORTED_RULE_FOUND:
+                    lines.append(
+                        f"• {label}: поддерживаемое правило не найдено. "
+                        "Это не подтверждение совместимости или безопасности."
+                    )
+                elif rule.status is RuleStatus.INSUFFICIENT_EVIDENCE:
+                    lines.append(
+                        f"• {label}: данных недостаточно. "
+                        "План автоматически не усиливается и не дополняется догадкой."
+                    )
+                elif rule.status is RuleStatus.CANNOT_OPTIMIZE_FIXED_COMBINATION:
+                    lines.append(
+                        f"• {label}: состав одной единицы нельзя разнести по компонентам. "
+                        "План не пытается разделить неделимую добавку."
+                    )
+                else:
+                    lines.append(
+                        f"• {label}: более приоритетный подтверждённый контекст не позволяет "
+                        "автоматически применить это предпочтение."
+                    )
+
+        lines.extend(
+            [
+                "",
+                "Morning / Day / Evening — организационные метки пользователя. "
+                "VitaminBot не выводит из них биологическое преимущество времени суток.",
+                "Отсутствие правила не означает, что сочетание безопасно.",
+            ]
+        )
+        short_revision = self._short_revision(view.snapshot.context_revision)
+        return Screen(
+            text="\n".join(lines),
+            rows=(
+                (Button("Источники правил", f"k122why:{short_revision}"),),
+                (Button("Сегодня", "k120today"), Button("План", "k120p")),
+                (Button("Итоги", "k122tot"),),
+            ),
+        )
+
+    def safety(self, telegram_user_id: int) -> Screen:
+        user_id = self._base_store.ensure_user(telegram_user_id)
+        view = self._build_view(user_id)
+        presentations = self._reference_presentations(view)
+        lines = [
+            "Справочные значения и ограничения",
+            "",
+            "Здесь нет персональной рекомендации по дозе. "
+            "Неизвестное или неприменимое значение не заменяется взрослым значением по умолчанию.",
+        ]
+        if not presentations:
+            lines.extend(
+                [
+                    "",
+                    "Для текущих подтверждённых итогов нет однозначно сопоставимого "
+                    "справочного типа. Это не означает отсутствие риска или ограничений.",
+                ]
+            )
+        for item in presentations:
+            lines.extend(["", f"{item.subject_name} — {self._reference_label(item.reference_type)}"])
+            lines.append(item.state_text)
+            if item.comparison_text is not None:
+                lines.append(item.comparison_text)
+
+        short_revision = self._short_revision(view.snapshot.context_revision)
+        return Screen(
+            text="\n".join(lines),
+            rows=(
+                (Button("Почему / источники", f"k122src:{short_revision}"),),
+                (Button("Итоги", "k122tot"), Button("Сегодня", "k120today")),
+            ),
+        )
+
+    def has_pending_text(self, telegram_user_id: int) -> bool:
+        user_id = self._base_store.ensure_user(telegram_user_id)
+        session = self._store.session(user_id)
+        return session is not None and session.state == "amount_input"
+
+    def text(
+        self,
+        telegram_user_id: int,
+        text: str,
+        *,
+        action_key: str,
+    ) -> Screen:
+        user_id = self._base_store.ensure_user(telegram_user_id)
+        session = self._store.session(user_id)
+        if session is None or session.state != "amount_input":
+            return Screen(text="Сейчас я не жду значение состава. Откройте «Состав» и выберите нутриент.")
+
+        parsed = self._parse_amount(text)
+        if parsed is None:
+            return Screen(
+                text=(
+                    f"{session.display_name}\n\n"
+                    "Отправьте количество с единицей массы, например: 100 mg, 250 мкг или 1 g. "
+                    "Значение не будет пересчитано в другую химическую форму."
+                ),
+                rows=((Button("Отмена", "k122cancel"),),),
+            )
+        value, unit = parsed
+        try:
+            updated = self._store.set_amount(
+                user_id,
+                action_key,
+                value=value,
+                unit=unit,
+            )
+        except (InvalidCompositionState, StaleCompositionAction):
+            return self._stale_screen()
+        return self._review_screen(updated)
+
+    def callback(
+        self,
+        telegram_user_id: int,
+        data: str,
+        *,
+        action_key: str,
+    ) -> Screen:
+        user_id = self._base_store.ensure_user(telegram_user_id)
+        parts = data.split(":")
+        action = parts[0]
+        try:
+            if action == "k122comp":
+                return self.composition(telegram_user_id)
+            if action == "k122tot":
+                return self.totals(telegram_user_id)
+            if action == "k122rules":
+                return self.rules(telegram_user_id)
+            if action == "k122safe":
+                return self.safety(telegram_user_id)
+            if action == "k122cancel":
+                self._store.cancel(user_id)
+                return Screen(
+                    text="Ввод состава отменён. Подтверждённые данные не изменены.",
+                    rows=((Button("Состав", "k122comp"),),),
+                )
+            if action == "k122c":
+                record = self._record_from_token(user_id, parts[1], int(parts[2]))
+                return self._substance_picker(user_id, record)
+            if action == "k122n":
+                record = self._record_from_token(user_id, parts[1], int(parts[2]))
+                substance_key = parts[3]
+                subject_id = self._subject_for_substance(substance_key)
+                display_name = _RU_SUBSTANCE_NAMES.get(substance_key)
+                if subject_id is None or display_name is None:
+                    raise ValueError("unsupported substance")
+                session = self._store.begin_amount(
+                    user_id,
+                    action_key,
+                    tracked_instance_id=record.instance_id,
+                    expected_supplement_revision=record.revision,
+                    substance_key=substance_key,
+                    analyte_id=subject_id,
+                    display_name=display_name,
+                )
+                return Screen(
+                    text=(
+                        f"{session.display_name} — {record.name}\n\n"
+                        "Введите количество на одну порцию с этикетки вместе с единицей массы. "
+                        "Пример: 100 mg или 250 мкг.\n\n"
+                        "Я сохраню только введённый факт. Это не рекомендация по дозе."
+                    ),
+                    rows=((Button("Отмена", "k122cancel"),),),
+                )
+            if action == "k122ok":
+                record = self._store.confirm_amount(
+                    user_id,
+                    action_key,
+                    expected_session_revision=int(parts[1]),
+                )
+                supplement = self._base_store.supplement(user_id, record.tracked_instance_id)
+                rows: list[tuple[Button, ...]] = [
+                    (Button("Добавить ещё строку состава", "k122comp"),),
+                ]
+                manual_token = self._manual_token(supplement.instance_id)
+                if manual_token is not None:
+                    rows.append(
+                        (
+                            Button(
+                                "Настроить план",
+                                f"p:{manual_token}:{supplement.revision}",
+                            ),
+                        )
+                    )
+                rows.extend(
+                    [
+                        (Button("Итоги за день", "k122tot"),),
+                        (Button("Сегодня", "k120today"),),
+                    ]
+                )
+                return Screen(
+                    text=(
+                        f"Состав подтверждён\n\n"
+                        f"{self._subject_name(record.analyte_id)}: "
+                        f"{self._decimal(record.value)} {self._unit_label(record.unit)} "
+                        "на подтверждённую порцию этикетки.\n\n"
+                        "Это запись факта с этикетки, а не вывод о безопасности "
+                        "и не рекомендация по дозе."
+                    ),
+                    rows=tuple(rows),
+                )
+            if action == "k122why":
+                return self._rule_sources(telegram_user_id, parts[1])
+            if action == "k122src":
+                return self._reference_sources(telegram_user_id, parts[1])
+        except (IndexError, ValueError):
+            return Screen(
+                text="Это действие больше нельзя применить. Откройте текущий экран ещё раз."
+            )
+        except DuplicateCompositionFact:
+            return Screen(
+                text=(
+                    "Для этого нутриента уже есть подтверждённая ручная строка. "
+                    "Я не заменяю её молча. Удаление/коррекция должны быть отдельным явным действием."
+                ),
+                rows=((Button("Состав", "k122comp"),),),
+            )
+        except (InvalidCompositionState, StaleCompositionAction):
+            return self._stale_screen()
+        return Screen(text="Это действие сейчас недоступно.")
+
+    def decorate_operational_screen(self, screen: Screen) -> Screen:
+        """Add vertical navigation without changing the underlying domain transition."""
+        callbacks = {button.callback_data for row in screen.rows for button in row}
+        rows = list(screen.rows)
+        if any(value.startswith("p:") for value in callbacks):
+            rows.append(
+                (
+                    Button("Состав", "k122comp"),
+                    Button("Итоги", "k122tot"),
+                )
+            )
+        if "k120p" in callbacks or "k120h" in callbacks or "k120today" in callbacks:
+            if "k122tot" not in callbacks:
+                rows.append((Button("Итоги", "k122tot"), Button("Почему?", "k122rules")))
+        return Screen(text=screen.text, rows=tuple(rows))
+
+    def _substance_picker(self, user_id: UUID, record: SupplementRecord) -> Screen:
+        existing = set(self._store.manual_substance_keys(user_id, record.instance_id))
+        options = [
+            (key, name, self._subject_for_substance(key))
+            for key, name in _RU_SUBSTANCE_NAMES.items()
+            if key not in existing
+        ]
+        options = [(key, name, subject_id) for key, name, subject_id in options if subject_id]
+        if not options:
+            return Screen(
+                text=(
+                    f"Состав — {record.name}\n\n"
+                    "Все поддерживаемые в этом ручном MVP списке позиции уже подтверждены. "
+                    "Я не создаю дубликаты автоматически."
+                ),
+                rows=((Button("Итоги", "k122tot"),),),
+            )
+        token = self._token(record.instance_id)
+        rows = tuple(
+            (Button(name, f"k122n:{token}:{record.revision}:{key}"),)
+            for key, name, _ in options
+        )
+        return Screen(
+            text=(
+                f"Состав — {record.name}\n\n"
+                "Выберите нутриент только если именно он указан на этикетке. "
+                "Следующим сообщением вы подтвердите количество на порцию.\n\n"
+                "Выбор названия не означает, что добавка безопасна или подходит вам."
+            ),
+            rows=rows + ((Button("Назад", "k122comp"),),),
+        )
+
+    @staticmethod
+    def _review_screen(session: object) -> Screen:
+        assert session.pending_value is not None
+        assert session.pending_unit is not None
+        return Screen(
+            text=(
+                f"Проверьте состав\n\n"
+                f"{session.display_name}: {KIR122Controller._decimal(session.pending_value)} "
+                f"{KIR122Controller._unit_label(session.pending_unit)} "
+                "на одну подтверждённую порцию этикетки.\n\n"
+                "Подтверждение означает только «это совпадает с тем, что я ввёл». "
+                "Оно не означает «безопасно», «подходит» или «рекомендовано»."
+            ),
+            rows=(
+                (Button("Подтвердить", f"k122ok:{session.revision}"),),
+                (Button("Отмена / ввести заново", "k122cancel"),),
+            ),
+        )
+
+    def _build_view(self, user_id: UUID) -> VerticalView:
+        snapshot = self._store.snapshot(
+            user_id,
+            semantic_versions=(DATASET_VERSION, RULESET_VERSION, "kir145.accepted.v1"),
+        )
+        contributions: list[ConfirmedPlannedContribution] = []
+        scheduling_items: list[SchedulingItem] = []
+        item_names: dict[str, str] = {}
+
+        for supplement in snapshot.supplements:
+            if (
+                supplement.plan_id is None
+                or supplement.plan_version is None
+                or not supplement.events
+            ):
+                continue
+            serving = self._serving(supplement)
+            plan = IntakePlan(
+                plan_id=supplement.plan_id,
+                tracked_instance_id=supplement.instance_id,
+                version=supplement.plan_version,
+                events=tuple(
+                    PlannedIntakeEvent(
+                        event_id=event.event_id,
+                        consumption_unit_id=event.consumption_unit_id,
+                        consumption_units=event.consumption_units,
+                        schedule_label=event.schedule_label,
+                    )
+                    for event in supplement.events
+                ),
+            )
+            per_unit: list[tuple[SnapshotAmount, NormalizationOutcome]] = []
+            for source_amount in supplement.amounts:
+                amount = self._amount_record(source_amount)
+                if amount is None or source_amount.amount_basis is None:
+                    continue
+                if source_amount.source_superseded_by is not None:
+                    outcome = NormalizationOutcome(
+                        status=ResolutionStatus.AMBIGUOUS,
+                        reason=UnresolvedReason.INPUT_UNRESOLVED,
+                    )
+                else:
+                    try:
+                        outcome = normalize_per_consumption_unit(amount, serving)
+                    except ValueError:
+                        outcome = NormalizationOutcome(
+                            status=ResolutionStatus.AMBIGUOUS,
+                            reason=UnresolvedReason.INPUT_UNRESOLVED,
+                        )
+                per_unit.append((source_amount, outcome))
+                if outcome.status is ResolutionStatus.RESOLVED and outcome.amount is not None:
+                    daily = normalize_planned_daily_amount(outcome.amount, plan)
+                else:
+                    daily = outcome
+                contributions.append(
+                    ConfirmedPlannedContribution(
+                        contribution_id=f"kir122:{source_amount.amount_id}",
+                        confirmation_ref=f"confirmed:{source_amount.amount_id}",
+                        product_id=supplement.product_id,
+                        formulation_id=supplement.formulation_id,
+                        tracked_instance_id=supplement.instance_id,
+                        plan_id=supplement.plan_id,
+                        plan_version=supplement.plan_version,
+                        expected_subject_kind=SubjectKind(source_amount.subject_kind),
+                        expected_subject_id=source_amount.subject_id,
+                        expected_amount_basis=AmountBasis(source_amount.amount_basis),
+                        expected_equivalence_basis=source_amount.equivalence_basis,
+                        expected_unit=(
+                            None if source_amount.unit is None else Unit(source_amount.unit)
+                        ),
+                        outcome=daily,
+                    )
+                )
+
+            for event in supplement.events:
+                event_amounts: list[ComputedAmount] = []
+                for _, outcome in per_unit:
+                    if outcome.status is not ResolutionStatus.RESOLVED or outcome.amount is None:
+                        continue
+                    amount = outcome.amount
+                    event_amounts.append(
+                        ComputedAmount(
+                            subject_kind=amount.subject_kind,
+                            subject_id=amount.subject_id,
+                            value=amount.value * event.consumption_units,
+                            unit=amount.unit,
+                            amount_basis=amount.amount_basis,
+                            quantity_basis=QuantityBasis.ABSOLUTE,
+                            source_quantity_basis_ids=amount.source_quantity_basis_ids,
+                            source_amount_ids=amount.source_amount_ids,
+                            source_ids=amount.source_ids,
+                            traces=amount.traces
+                            + (
+                                ComputationTrace(
+                                    operation="kir122_event_snapshot",
+                                    rule_id="KIR-122",
+                                    rule_version="1",
+                                    plan_id=supplement.plan_id,
+                                    plan_version=supplement.plan_version,
+                                ),
+                            ),
+                            chemical_form_id=amount.chemical_form_id,
+                            equivalence_basis=amount.equivalence_basis,
+                        )
+                    )
+                if not event_amounts:
+                    continue
+                item_id = f"item:{self._token(supplement.instance_id)}:{event.event_id}"
+                item_names[item_id] = supplement.name
+                integral_units = (
+                    event.consumption_units == event.consumption_units.to_integral_value()
+                )
+                scheduling_items.append(
+                    SchedulingItem(
+                        item_id=item_id,
+                        product_id=supplement.product_id,
+                        formulation_id=supplement.formulation_id,
+                        tracked_instance_id=supplement.instance_id,
+                        plan_id=supplement.plan_id,
+                        plan_version=supplement.plan_version,
+                        event_id=event.event_id,
+                        context_revision=snapshot.context_revision,
+                        source_kind=ItemSourceKind.SUPPLEMENT,
+                        amounts=tuple(event_amounts),
+                        confirmed_consumption_units=event.consumption_units,
+                        units_independently_schedulable=(
+                            supplement.unit_label in _INTACT_UNIT_LABELS and integral_units
+                        ),
+                        fixed_combination_id=supplement.formulation_id,
+                    )
+                )
+
+        aggregation = aggregate_daily_contributions(contributions)
+        bound = BoundDailyAggregation(
+            aggregation=aggregation,
+            context_revision=snapshot.context_revision,
+        )
+        rule_result = evaluate_rule_engine(
+            RuleEvaluationContext(
+                context_revision=snapshot.context_revision,
+                items=tuple(scheduling_items),
+            ),
+            aggregation=bound,
+        )
+        return VerticalView(
+            snapshot=snapshot,
+            aggregation=aggregation,
+            rule_result=rule_result,
+            item_names=item_names,
+        )
+
+    @staticmethod
+    def _serving(supplement: SnapshotSupplement) -> ServingDefinition:
+        return ServingDefinition(
+            basis_id=supplement.serving_basis_id,
+            basis_type=QuantityBasis(supplement.serving_basis_type),
+            label_text=supplement.serving_label_text,
+            source_id=supplement.serving_source_id,
+            basis_quantity=supplement.serving_quantity,
+            basis_unit=None if supplement.serving_unit is None else Unit(supplement.serving_unit),
+            consumption_unit_id=supplement.unit_id,
+        )
+
+    @staticmethod
+    def _amount_record(amount: SnapshotAmount) -> AmountRecord | None:
+        try:
+            return AmountRecord(
+                amount_id=amount.amount_id,
+                subject_kind=SubjectKind(amount.subject_kind),
+                subject_id=amount.subject_id,
+                source_id=amount.source_id,
+                resolution_status=ResolutionStatus(amount.resolution_status),
+                evidence_status=EvidenceStatus(amount.evidence_status),
+                value=amount.value,
+                unit=None if amount.unit is None else Unit(amount.unit),
+                amount_basis=(
+                    None if amount.amount_basis is None else AmountBasis(amount.amount_basis)
+                ),
+                quantity_basis=(
+                    None if amount.quantity_basis is None else QuantityBasis(amount.quantity_basis)
+                ),
+                quantity_basis_id=amount.quantity_basis_id,
+                equivalence_basis=amount.equivalence_basis,
+                raw_text=amount.raw_text,
+            )
+        except ValueError:
+            return None
+
+    def _reference_presentations(self, view: VerticalView) -> tuple[ReferencePresentation, ...]:
+        rows: list[ReferencePresentation] = []
+        for aggregate in view.aggregation.aggregates:
+            candidates = tuple(
+                record
+                for record in EU_EFSA_REFERENCE_DATASET.records
+                if record.lifecycle is ReferenceLifecycle.ACTIVE
+                and record.subject_kind is aggregate.key.subject_kind
+                and record.subject_id == aggregate.key.subject_id
+                and record.amount_basis is aggregate.key.amount_basis
+                and record.equivalence_basis == aggregate.key.equivalence_basis
+            )
+            pairs = sorted(
+                {(record.substance_key, record.reference_type) for record in candidates},
+                key=lambda item: (item[0], item[1].value),
+            )
+            if not pairs:
+                continue
+            amount = self._aggregate_amount(aggregate)
+            for substance_key, reference_type in pairs:
+                lookup = lookup_reference(
+                    EU_EFSA_REFERENCE_DATASET,
+                    ReferenceQuery(
+                        substance_key=substance_key,
+                        reference_type=reference_type,
+                        profile=PopulationProfile(),
+                        exposure=ExposureContext(),
+                        context_revision=view.snapshot.context_revision,
+                    ),
+                )
+                subject_name = self._subject_name(aggregate.key.subject_id)
+                if lookup.status is not LookupStatus.MATCHED or lookup.match is None:
+                    rows.append(
+                        ReferencePresentation(
+                            subject_name=subject_name,
+                            reference_type=reference_type,
+                            state_text=(
+                                "Не могу оценить для текущего контекста применимости. "
+                                "Значение не подставлено и не заменено взрослым значением."
+                            ),
+                            comparison_text=None,
+                            source_title=None,
+                            source_url=None,
+                            source_version=None,
+                        )
+                    )
+                    continue
+
+                record = lookup.match.record
+                source = lookup.match.source
+                state_text = self._reference_state_text(record)
+                comparison_text: str | None = None
+                if amount is not None and record.value is not None:
+                    comparison = compare_amount_to_reference(
+                        amount,
+                        lookup,
+                        context_revision=view.snapshot.context_revision,
+                    )
+                    if comparison.relation is not None:
+                        relation = {
+                            "below": "ниже",
+                            "equal": "равен",
+                            "above": "выше",
+                        }[comparison.relation.value]
+                        comparison_text = (
+                            f"Подтверждённый дневной итог {relation} этого значения. "
+                            "Это сравнение не является персональным выводом о безопасности "
+                            "и не задаёт дозу."
+                        )
+                rows.append(
+                    ReferencePresentation(
+                        subject_name=subject_name,
+                        reference_type=reference_type,
+                        state_text=state_text,
+                        comparison_text=comparison_text,
+                        source_title=source.title,
+                        source_url=source.source_url,
+                        source_version=source.version_label,
+                    )
+                )
+        return tuple(rows)
+
+    @staticmethod
+    def _aggregate_amount(aggregate: object) -> ComputedAmount | None:
+        if (
+            not aggregate.is_complete
+            or aggregate.known_total is None
+            or aggregate.unit is None
+            or not aggregate.contributors
+        ):
+            return None
+        contributors = aggregate.contributors
+        return ComputedAmount(
+            subject_kind=aggregate.key.subject_kind,
+            subject_id=aggregate.key.subject_id,
+            value=aggregate.known_total,
+            unit=aggregate.unit,
+            amount_basis=aggregate.key.amount_basis,
+            quantity_basis=QuantityBasis.PER_DAY,
+            source_quantity_basis_ids=tuple(
+                sorted(
+                    {
+                        basis
+                        for contributor in contributors
+                        for basis in contributor.original_amount.source_quantity_basis_ids
+                    }
+                )
+            ),
+            source_amount_ids=tuple(
+                sorted(
+                    {
+                        amount_id
+                        for contributor in contributors
+                        for amount_id in contributor.original_amount.source_amount_ids
+                    }
+                )
+            ),
+            source_ids=tuple(
+                sorted(
+                    {
+                        source_id
+                        for contributor in contributors
+                        for source_id in contributor.original_amount.source_ids
+                    }
+                )
+            ),
+            traces=tuple(
+                trace
+                for contributor in contributors
+                for trace in contributor.original_amount.traces
+            ),
+            equivalence_basis=aggregate.key.equivalence_basis,
+        )
+
+    @staticmethod
+    def _reference_state_text(record: object) -> str:
+        if record.status in {
+            ReferenceStatus.ESTABLISHED_NUMERIC,
+            ReferenceStatus.CONDITIONAL_NUMERIC,
+        }:
+            if record.value is not None:
+                value = KIR122Controller._decimal(record.value)
+                unit = KIR122Controller._unit_label(record.unit)
+                suffix = " (не UL)" if record.reference_type is ReferenceType.SAFE_LEVEL else ""
+                return (
+                    f"{record.reference_type.value}{suffix}: {value} {unit}/день. "
+                    "Это типизированное справочное значение, а не персональная рекомендуемая доза."
+                )
+            return (
+                f"{record.reference_type.value}: справочное значение задано диапазоном. "
+                "Оно не является персональной рекомендуемой дозой."
+            )
+        if record.status is ReferenceStatus.NO_UL_INSUFFICIENT_DATA:
+            return (
+                "UL не установлен из-за недостаточности данных. "
+                "Это не означает отсутствие риска или неограниченную безопасность."
+            )
+        if record.status is ReferenceStatus.NO_NUMERIC_UL_NO_DEFINED_ADVERSE_EFFECTS:
+            return (
+                "Числовой UL не установлен в этом источнике. "
+                "Это не означает неограниченную безопасность."
+            )
+        if record.status is ReferenceStatus.NO_UL_SAFE_LEVEL_IDENTIFIED:
+            return (
+                "UL не установлен; SAFE_LEVEL рассматривается как отдельный тип справочного "
+                "значения и не является UL или персональной дозой."
+            )
+        return (
+            "Числовое справочное значение не установлено. "
+            "Отсутствие значения не означает безопасность."
+        )
+
+    def _rule_sources(self, telegram_user_id: int, expected_revision: str) -> Screen:
+        user_id = self._base_store.ensure_user(telegram_user_id)
+        view = self._build_view(user_id)
+        if self._short_revision(view.snapshot.context_revision) != expected_revision:
+            return self._stale_screen()
+        sources: dict[str, tuple[str, str]] = {}
+        for result in view.rule_result.scheduling_results:
+            for source in result.source_provenance:
+                sources[source.source_key] = (source.title, source.source_url)
+        lines = [
+            "Почему / источники правил",
+            "",
+            "Источники принадлежат принятому детерминированному набору правил. "
+            "Текст интерфейса не создаёт новые научные правила.",
+        ]
+        if not sources:
+            lines.append(
+                "Для текущего результата подтверждённое правило с источником не применилось. "
+                "Это не подтверждение совместимости или безопасности."
+            )
+        else:
+            for title, url in sorted(sources.values()):
+                lines.extend([f"• {title}", f"  {url}"])
+        return Screen(text="\n".join(lines), rows=((Button("Назад", "k122rules"),),))
+
+    def _reference_sources(self, telegram_user_id: int, expected_revision: str) -> Screen:
+        user_id = self._base_store.ensure_user(telegram_user_id)
+        view = self._build_view(user_id)
+        if self._short_revision(view.snapshot.context_revision) != expected_revision:
+            return self._stale_screen()
+        presentations = self._reference_presentations(view)
+        sources = {
+            (item.source_title, item.source_url, item.source_version)
+            for item in presentations
+            if item.source_title is not None and item.source_url is not None
+        }
+        lines = [
+            "Почему / источники",
+            "",
+            f"Набор справочных данных: {DATASET_VERSION}.",
+            "Показываются только источники записей, которые совпали с текущим контекстом.",
+        ]
+        if not sources:
+            lines.append(
+                "Совпавшего справочного источника для текущего контекста нет. "
+                "Значение не было угадано или подставлено."
+            )
+        else:
+            for title, url, version in sorted(sources):
+                lines.extend([f"• {title}", f"  версия: {version}", f"  {url}"])
+        return Screen(text="\n".join(lines), rows=((Button("Назад", "k122safe"),),))
+
+    def _record_from_token(
+        self,
+        user_id: UUID,
+        token: str,
+        expected_revision: int,
+    ) -> SupplementRecord:
+        matches = tuple(
+            record
+            for record in self._base_store.list_supplements(user_id)
+            if self._token(record.instance_id) == token
+        )
+        if len(matches) != 1:
+            raise ValueError("stale supplement token")
+        record = matches[0]
+        if record.revision != expected_revision:
+            raise StaleCompositionAction("supplement changed")
+        return record
+
+    @staticmethod
+    def _subject_for_substance(substance_key: str) -> str | None:
+        ids = {
+            record.subject_id
+            for record in EU_EFSA_REFERENCE_DATASET.records
+            if record.lifecycle is ReferenceLifecycle.ACTIVE
+            and record.substance_key == substance_key
+            and record.subject_kind is SubjectKind.ANALYTE
+        }
+        return next(iter(ids)) if len(ids) == 1 else None
+
+    @staticmethod
+    def _subject_name(subject_id: str) -> str:
+        for key, name in _RU_SUBSTANCE_NAMES.items():
+            ids = {
+                record.subject_id
+                for record in EU_EFSA_REFERENCE_DATASET.records
+                if record.lifecycle is ReferenceLifecycle.ACTIVE
+                and record.substance_key == key
+            }
+            if subject_id in ids:
+                return name
+        return "Подтверждённый нутриент"
+
+    @staticmethod
+    def _parse_amount(value: str) -> tuple[Decimal, str] | None:
+        match = _AMOUNT_PATTERN.fullmatch(value)
+        if match is None:
+            return None
+        try:
+            number = Decimal(match.group(1).replace(",", "."))
+        except InvalidOperation:
+            return None
+        if not number.is_finite() or number < 0:
+            return None
+        unit = _UNIT_ALIASES[match.group(2).lower()]
+        return number, unit
+
+    @staticmethod
+    def _token(instance_id: str) -> str:
+        return hashlib.sha256(instance_id.encode("utf-8")).hexdigest()[:12]
+
+    @staticmethod
+    def _manual_token(instance_id: str) -> str | None:
+        token = instance_id.removeprefix("instance:manual:")
+        return token if re.fullmatch(r"[0-9a-f]{16}", token) else None
+
+    @staticmethod
+    def _short_revision(context_revision: str) -> str:
+        return context_revision.removeprefix("kir122:")[:12]
+
+    @staticmethod
+    def _decimal(value: Decimal) -> str:
+        rendered = format(value.normalize(), "f")
+        return rendered.rstrip("0").rstrip(".") if "." in rendered else rendered
+
+    @staticmethod
+    def _unit_label(unit: object) -> str:
+        raw = unit.value if isinstance(unit, Unit) else str(unit)
+        return _RU_UNIT.get(raw, raw)
+
+    @staticmethod
+    def _reference_label(reference_type: ReferenceType) -> str:
+        if reference_type is ReferenceType.UL:
+            return "UL (верхний допустимый уровень)"
+        if reference_type is ReferenceType.SAFE_LEVEL:
+            return "SAFE_LEVEL (отдельный тип, не UL)"
+        return reference_type.value
+
+    @staticmethod
+    def _stale_screen() -> Screen:
+        return Screen(
+            text=(
+                "Экран устарел: состав, порция или план уже изменились. "
+                "Я не применил старое действие и не переименовал старый расчёт как новый."
+            ),
+            rows=((Button("Обновить итоги", "k122tot"),),),
+        )
