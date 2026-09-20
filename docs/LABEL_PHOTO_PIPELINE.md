@@ -28,10 +28,26 @@ The pipeline, not the provider, computes the next review state:
 
 Provider confidence is preserved as metadata and cannot bypass confirmation.
 
+## Candidate identity and replay safety
+
+Provider `extraction_id` is provenance only. It is never the persistence identity and cannot authorize a confirmation.
+
+For every successful extraction the pipeline derives a versioned project-owned `candidate_id` from:
+
+- project-owned capture ID;
+- source-image SHA-256;
+- the complete canonical KIR-111 candidate payload after provider validation/routing;
+- with provider `extraction_id` explicitly excluded from the fingerprint.
+
+The same capture/image/candidate produces the same fingerprint for safe exact retry. A different capture or a changed re-extraction produces a different fingerprint even if the provider reuses the same `extraction_id`, confirmation revision, and field IDs.
+
+Before accepting user decisions, `confirm_and_persist()` recomputes the fingerprint from the supplied candidate and rejects any candidate-object mismatch. The `ConfirmationRequest.expected_candidate_id` must also equal the current candidate ID, so a confirmation prepared for an earlier extraction cannot be replayed onto a changed re-extraction.
+
 ## Mandatory confirmation
 
-`confirm_and_persist()` is revision-bound and field-complete:
+`confirm_and_persist()` is candidate-bound, revision-bound, and field-complete:
 
+- `expected_candidate_id` must equal the current project-owned candidate fingerprint;
 - `expected_revision` must equal the candidate revision;
 - the displayed field-ID set must exactly equal the candidate field set;
 - every displayed field needs exactly one explicit decision;
@@ -41,7 +57,7 @@ Provider confidence is preserved as metadata and cannot bypass confirmation.
 - any rejected field rejects the capture;
 - only the reconstructed `accepted_for_storage` record crosses the `ConfirmedLabelSink` boundary.
 
-The sink contract is idempotent by `extraction_id:confirmation_revision`. The pipeline deletes source pixels only after successful persistence. If persistence fails, the transient source remains available until TTL expiry so a safe retry is possible.
+The sink contract is idempotent by project-owned `candidate_id:confirmation:confirmation_revision`. Provider `extraction_id` remains available inside the extraction as provenance but is not trusted for concurrency or idempotency. An exact retry of the same candidate/confirmation therefore reuses the same persistence key, while another capture or changed re-extraction cannot collide through a reused provider ID. The pipeline deletes source pixels only after successful persistence. If persistence fails, the transient source remains available until TTL expiry so a safe retry is possible.
 
 An `accepted_for_storage` record may still contain semantically unresolved fields with `blocked_unresolved`; user confirmation means the transcription matches the package, not that the value is scientifically resolved or safe.
 
