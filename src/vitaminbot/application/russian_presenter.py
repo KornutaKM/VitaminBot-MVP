@@ -122,8 +122,10 @@ _TEXT_REPLACEMENTS: Final[tuple[tuple[str, str], ...]] = (
     ("Planned quantity:", "Запланировано:"),
     ("product units.", "единиц продукта."),
     (
-        "Morning / Day / Evening are routine labels only. No biological timing claim is being made.",
-        "Утро / День / Вечер — только метки режима. Биологическое преимущество времени не заявляется.",
+        "Morning / Day / Evening are routine labels only. "
+        "No biological timing claim is being made.",
+        "Утро / День / Вечер — только метки режима. "
+        "Биологическое преимущество времени не заявляется.",
     ),
     ("Edit timezone", "Изменить часовой пояс"),
     (
@@ -180,9 +182,15 @@ _TEXT_REPLACEMENTS: Final[tuple[tuple[str, str], ...]] = (
     ),
     ("Status: Confirmed manual entry", "Статус: ручной ввод подтверждён"),
     ("Your plan:", "Ваш план:"),
-    ("Product facts and your plan are stored separately.", "Факты о продукте и ваш план хранятся отдельно."),
+    (
+        "Product facts and your plan are stored separately.",
+        "Факты о продукте и ваш план хранятся отдельно.",
+    ),
     ("Saved plan note:", "Примечание к сохранённому плану:"),
-    ("Review the plan if you want to change it.", "Измените план, если хотите обновить эту настройку."),
+    (
+        "Review the plan if you want to change it.",
+        "Измените план, если хотите обновить эту настройку.",
+    ),
     ("Remove ", "Удалить "),
     (
         "This removes the tracked supplement, its saved plan, and linked intake history.",
@@ -204,10 +212,16 @@ _TEXT_REPLACEMENTS: Final[tuple[tuple[str, str], ...]] = (
         "This action is out of date, so I didn’t apply it.",
         "Действие устарело, поэтому оно не применено.",
     ),
-    ("Open the current supplement state and try again.", "Откройте актуальную карточку и повторите."),
+    (
+        "Open the current supplement state and try again.",
+        "Откройте актуальную карточку и повторите.",
+    ),
     ("Start again from Add supplement.", "Начните заново через «Добавить добавку»."),
     ("Please send a non-empty supplement name.", "Отправьте непустое название добавки."),
-    ("The supplement name is too long for this MVP entry field.", "Название слишком длинное для поля MVP."),
+    (
+        "The supplement name is too long for this MVP entry field.",
+        "Название слишком длинное для поля MVP.",
+    ),
     (
         "The supplement name contains unsupported control characters.",
         "Название содержит неподдерживаемые управляющие символы.",
@@ -217,16 +231,21 @@ _TEXT_REPLACEMENTS: Final[tuple[tuple[str, str], ...]] = (
         "Pending Plan input cancelled. The recurring plan and Today occurrences were unchanged.",
         "Ввод для Плана отменён. Повторяющийся план и события Сегодня не изменены.",
     ),
-    ("Today needs your timezone before reminders can be placed on a local day.", "Для экрана Сегодня нужен часовой пояс."),
+    (
+        "Today needs your timezone before reminders can be placed on a local day.",
+        "Для экрана Сегодня нужен часовой пояс.",
+    ),
     (
         "Set a timezone in Profile. This is a technical scheduling field, not a medical "
         "applicability field.",
-        "Укажите часовой пояс в Профиле. Это техническое поле расписания, не медицинское applicability-поле.",
+        "Укажите часовой пояс в Профиле. Это техническое поле расписания, "
+        "не медицинское applicability-поле.",
     ),
     (
         "Today could not resolve one of your local schedule times across a DST transition. "
         "Nothing was moved automatically.",
-        "Не удалось однозначно разрешить локальное время при переходе DST. Ничего не перенесено автоматически.",
+        "Не удалось однозначно разрешить локальное время при переходе DST. "
+        "Ничего не перенесено автоматически.",
     ),
     (
         "Review the Plan and choose an unambiguous local time.",
@@ -249,7 +268,10 @@ _TEXT_REPLACEMENTS: Final[tuple[tuple[str, str], ...]] = (
         "Доказательные заметки показываются только когда применимо управляемое правило.",
     ),
     ("History", "История"),
-    ("No Taken / Skip / Later actions have been recorded yet.", "Действий Принято / Пропустить / Позже пока нет."),
+    (
+        "No Taken / Skip / Later actions have been recorded yet.",
+        "Действий Принято / Пропустить / Позже пока нет.",
+    ),
     (
         "History is an audit/correction view. Reminder delivery is not intake proof.",
         "История предназначена для аудита и исправлений. Доставка напоминания не доказывает приём.",
@@ -281,7 +303,10 @@ _TEXT_REPLACEMENTS: Final[tuple[tuple[str, str], ...]] = (
     ),
     ("Unsupported Today/Plan action.", "Это действие Сегодня/Плана не поддерживается."),
     ("Today", "Сегодня"),
-    ("No scheduled occurrences for this local day.", "На этот локальный день нет запланированных событий."),
+    (
+        "No scheduled occurrences for this local day.",
+        "На этот локальный день нет запланированных событий.",
+    ),
     ("Plan is the recurring-template view.", "План — экран повторяющегося шаблона."),
     (
         "Today shows generated occurrences. Plan edits affect the recurring template; existing "
@@ -379,10 +404,19 @@ def _translate_button(label: str) -> str:
 
 
 def _translate_dynamic_text(text: str) -> str:
-    text = re.sub(r"\bMorning\b", "Утро", text)
-    text = re.sub(r"\bDay\b", "День", text)
-    text = re.sub(r"\bEvening\b", "Вечер", text)
-    text = re.sub(r"\bpending\b", "ожидает", text)
-    text = re.sub(r"\btaken\b", "принято", text)
-    text = re.sub(r"\bskipped\b", "пропущено", text)
+    replacements = (
+        ("Morning", "Утро"),
+        ("Day", "День"),
+        ("Evening", "Вечер"),
+        ("pending", "ожидает"),
+        ("taken", "принято"),
+        ("skipped", "пропущено"),
+        ("capsule", "капсула"),
+        ("tablet", "таблетка"),
+        ("softgel", "мягкая капсула"),
+        ("scoop", "мерная ложка"),
+        ("drop", "капля"),
+    )
+    for source, target in replacements:
+        text = re.sub(rf"\b{re.escape(source)}\b", target, text, flags=re.IGNORECASE)
     return text
