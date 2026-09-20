@@ -304,11 +304,7 @@ def _terminating_decimal(value: Fraction) -> Decimal | None:
         return None
 
     scale = max(twos, fives)
-    scaled_numerator = (
-        value.numerator
-        * (2 ** (scale - twos))
-        * (5 ** (scale - fives))
-    )
+    scaled_numerator = value.numerator * (2 ** (scale - twos)) * (5 ** (scale - fives))
     sign = 1 if scaled_numerator < 0 else 0
     digits = tuple(int(digit) for digit in str(abs(scaled_numerator)))
     return Decimal((sign, digits, -scale))
@@ -385,11 +381,7 @@ def convert_mass(
     if from_unit not in _MASS_TO_MICROGRAM or to_unit not in _MASS_TO_MICROGRAM:
         raise DimensionMismatchError("unsupported mass unit for KIR-113 MVP")
 
-    converted = (
-        Fraction(value)
-        * _MASS_TO_MICROGRAM[from_unit]
-        / _MASS_TO_MICROGRAM[to_unit]
-    )
+    converted = Fraction(value) * _MASS_TO_MICROGRAM[from_unit] / _MASS_TO_MICROGRAM[to_unit]
     resolved, rounding = _resolve_fraction(converted, None)
     if rounding is not None:
         raise AssertionError("metric mass conversion must always be exact")
@@ -438,9 +430,7 @@ def _resolve_input(
         return _unresolved_input_outcome(amount)
 
     _require_finite_nonnegative(amount.value, "amount.value")
-    source_basis_ids = (
-        (amount.quantity_basis_id,) if amount.quantity_basis_id is not None else ()
-    )
+    source_basis_ids = (amount.quantity_basis_id,) if amount.quantity_basis_id is not None else ()
     return _ResolvedQuantity(
         subject_kind=amount.subject_kind,
         subject_id=amount.subject_id,
@@ -489,9 +479,7 @@ def apply_scientific_conversion(
         and chemical_form_id is not None
         and resolved.chemical_form_id != chemical_form_id
     ):
-        raise RuleApplicationError(
-            "chemical form cannot change across normalization stages"
-        )
+        raise RuleApplicationError("chemical form cannot change across normalization stages")
     effective_form_id = chemical_form_id or resolved.chemical_form_id
 
     if effective_form_id is None:
@@ -561,9 +549,7 @@ def normalize_per_consumption_unit(
     if resolved.quantity_basis is not serving.basis_type:
         raise BasisMismatchError("amount quantity basis does not match serving basis type")
     if serving.basis_id not in resolved.source_quantity_basis_ids:
-        raise BasisMismatchError(
-            "source quantity basis lineage does not include serving basis ID"
-        )
+        raise BasisMismatchError("source quantity basis lineage does not include serving basis ID")
     if serving.basis_quantity is None or serving.basis_unit is None:
         raise BasisMismatchError("serving quantity and unit must be explicit")
     if serving.basis_unit is not Unit.COUNT:
