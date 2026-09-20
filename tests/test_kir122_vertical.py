@@ -306,3 +306,56 @@ def test_unknown_nutrient_fails_closed_without_persistence(
     assert "не могу однозначно сопоставить" in failed.text
     snapshot = store.snapshot(store.ensure_user(telegram_user_id))
     assert snapshot.supplements[0].amounts == ()
+
+
+
+def test_confirmed_composition_does_not_break_manual_supplement_removal(
+    kir122_system: tuple[
+        KIR116Controller,
+        KIR122Controller,
+        KIR122AnalysisService,
+        KIR122Store,
+        str,
+        str,
+    ],
+) -> None:
+    kir116, controller, _, _, database_url, schema = kir122_system
+    telegram_user_id = 122005
+    _prepare_planned_manual(
+        kir116,
+        telegram_user_id,
+        name="Disposable Magnesium",
+        quantity="1",
+    )
+    review = _add_magnesium_amount(controller, telegram_user_id, amount="50")
+    controller.callback(
+        telegram_user_id,
+        _button(review, "Подтвердить строку"),
+        action_key=f"{telegram_user_id}:nutrient-confirm",
+    )
+
+    listed = kir116.supplements(telegram_user_id)
+    detail = kir116.callback(
+        telegram_user_id,
+        listed.rows[0][0].callback_data,
+        action_key=f"{telegram_user_id}:open",
+    )
+    confirmation = kir116.callback(
+        telegram_user_id,
+        _button(detail, "Remove supplement…"),
+        action_key=f"{telegram_user_id}:remove-prompt",
+    )
+    removed = kir116.callback(
+        telegram_user_id,
+        _button(confirmation, "Remove supplement"),
+        action_key=f"{telegram_user_id}:remove-confirm",
+    )
+
+    assert "Supplement removed" in removed.text
+    assert "No supplements yet" in kir116.supplements(telegram_user_id).text
+
+    with psycopg.connect(database_url) as conn:
+        conn.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(schema)))
+        assert conn.execute("SELECT count(*) FROM product_amounts").fetchone() == (0,)
+        assert conn.execute("SELECT count(*) FROM product_formulations").fetchone() == (0,)
+        assert conn.execute("SELECT count(*) FROM source_records").fetchone() == (0,)
