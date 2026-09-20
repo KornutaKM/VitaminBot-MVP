@@ -47,7 +47,10 @@ class KIR120Controller:
         user_id = self._store.ensure_user(telegram_user_id)
         self._store.cancel_schedule_edit(user_id)
         return Screen(
-            text="Pending Plan input cancelled. The recurring plan and Today occurrences were unchanged.",
+            text=(
+                "Pending Plan input cancelled. "
+                "The recurring plan and Today occurrences were unchanged."
+            ),
             rows=((Button("Open Plan", "k120p"),),),
         )
 

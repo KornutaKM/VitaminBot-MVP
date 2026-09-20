@@ -591,7 +591,9 @@ class KIR120Store:
             ).fetchone()
             if duplicate is not None:
                 if duplicate["occurrence_id"] != occurrence_id:
-                    raise InvalidOccurrenceState("action key was already used for another occurrence")
+                    raise InvalidOccurrenceState(
+                        "action key was already used for another occurrence"
+                    )
                 return self._occurrence_in_connection(conn, user_id, occurrence_id)
 
             current = self._locked_occurrence(conn, user_id, occurrence_id)
@@ -1012,7 +1014,9 @@ class KIR120Store:
             ).fetchone()
             if duplicate is not None:
                 if duplicate["occurrence_id"] != occurrence_id:
-                    raise InvalidOccurrenceState("action key was already used for another occurrence")
+                    raise InvalidOccurrenceState(
+                        "action key was already used for another occurrence"
+                    )
                 return self._occurrence_in_connection(conn, user_id, occurrence_id)
 
             current = self._locked_occurrence(conn, user_id, occurrence_id)
