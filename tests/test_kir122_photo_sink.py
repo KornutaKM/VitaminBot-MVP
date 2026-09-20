@@ -24,6 +24,7 @@ from vitaminbot.recognition import (
 )
 from vitaminbot.recognition.pipeline import (
     ConfirmationRequest,
+    ConfirmedLabelRecord,
     FieldDecision,
     FieldDecisionAction,
     InMemoryTransientImageStore,
@@ -128,7 +129,7 @@ def test_confirmed_photo_record_persists_idempotently_without_source_pixels(
         confirmed_at=clock_value,
     )
     record = pipeline.confirm_and_persist(candidate, request)
-    assert not isinstance(record, ManualEntryFallback)
+    assert isinstance(record, ConfirmedLabelRecord)
 
     # The KIR-117 pipeline deletes transient pixels only after the durable sink succeeds.
     with pytest.raises(TransientImageExpiredError):
