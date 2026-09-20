@@ -15,12 +15,9 @@ jobs:
     runs-on: [self-hosted, Linux, X64, vitaminbot]
     timeout-minutes: 10
     env:
-      POSTGRES_DB: vitaminbot_ci
-      POSTGRES_USER: vitaminbot_ci
-      POSTGRES_PASSWORD: vitaminbot_ci_only
-      POSTGRES_PORT: "55432"
-      DATABASE_URL: postgresql://vitaminbot_ci:vitaminbot_ci_only@127.0.0.1:55432/vitaminbot_ci
-      COMPOSE_PROJECT_NAME: vitaminbot-ci-${{ github.run_id }}-${{ github.run_attempt }}
+      PGHOST: /var/run/postgresql
+      PGPORT: "55432"
+      PGUSER: nt5user
 
     steps:
       - name: Check out repository
@@ -46,46 +43,57 @@ jobs:
       - name: Mypy
         run: mypy src
 
-      - name: Start PostgreSQL for integration tests
+      - name: Verify bounded PostgreSQL integration service
         shell: bash
         run: |
-          compose() {
-            env \
-              POSTGRES_DB="$POSTGRES_DB" \
-              POSTGRES_USER="$POSTGRES_USER" \
-              POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-              POSTGRES_PORT="$POSTGRES_PORT" \
-              COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME" \
-              docker compose "$@"
-          }
+          set -euo pipefail
 
-          compose up -d postgres
-          for attempt in $(seq 1 30); do
-            if compose exec -T postgres \
-              pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"; then
-              exit 0
-            fi
-            sleep 1
-          done
+          pg_isready -h "$PGHOST" -p "$PGPORT" -d postgres
 
-          compose logs postgres
-          exit 1
+          current_user="$(
+            psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d postgres               -Atqc "SELECT current_user"
+          )"
+          test "$current_user" = "$PGUSER"
+
+          role_flags="$(
+            psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d postgres               -At -F '|'               -c "SELECT rolsuper, rolcreaterole, rolcreatedb, rolreplication, rolbypassrls FROM pg_roles WHERE rolname = current_user"
+          )"
+          if [[ "$role_flags" != "f|f|t|f|f" ]]; then
+            echo "Unexpected PostgreSQL CI role privileges: $role_flags" >&2
+            exit 1
+          fi
+
+          test -S "$PGHOST/.s.PGSQL.$PGPORT"
+          if ss -ltn | awk '{print $4}' | grep -Eq '(^|:)55432$'; then
+            echo "PostgreSQL CI port must not have a TCP listener" >&2
+            exit 1
+          fi
+
+      - name: Create isolated PostgreSQL test database
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          database_name="vitaminbot_ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
+          dropdb             --if-exists             --force             -h "$PGHOST"             -p "$PGPORT"             -U "$PGUSER"             "$database_name"
+          createdb             -h "$PGHOST"             -p "$PGPORT"             -U "$PGUSER"             "$database_name"
+
+          {
+            echo "POSTGRES_TEST_DB=$database_name"
+            echo "DATABASE_URL=dbname=$database_name user=$PGUSER host=$PGHOST port=$PGPORT"
+          } >> "$GITHUB_ENV"
 
       - name: Pytest
         run: pytest
 
-      - name: Stop PostgreSQL integration service
+      - name: Drop isolated PostgreSQL test database
         if: always()
         shell: bash
         run: |
-          if docker info >/dev/null 2>&1; then
-            env \
-              POSTGRES_DB="$POSTGRES_DB" \
-              POSTGRES_USER="$POSTGRES_USER" \
-              POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-              POSTGRES_PORT="$POSTGRES_PORT" \
-              COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME" \
-              docker compose down -v --remove-orphans
+          set -euo pipefail
+
+          if [[ -n "${POSTGRES_TEST_DB:-}" ]]; then
+            dropdb               --if-exists               --force               -h "$PGHOST"               -p "$PGPORT"               -U "$PGUSER"               "$POSTGRES_TEST_DB"
           fi
 
   compatibility-windows:
