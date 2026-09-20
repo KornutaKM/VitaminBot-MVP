@@ -474,3 +474,64 @@ ALTER TABLE candidate_resolutions
     FOREIGN KEY (candidate_set_id, selected_candidate_id)
     REFERENCES entity_candidates(candidate_set_id, candidate_id)
     DEFERRABLE INITIALLY DEFERRED;
+
+CREATE FUNCTION enforce_confirmed_candidate_is_active()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    selected_state TEXT;
+BEGIN
+    IF NEW.confirmation_state = 'confirmed' THEN
+        SELECT state
+        INTO selected_state
+        FROM entity_candidates
+        WHERE candidate_set_id = NEW.candidate_set_id
+          AND candidate_id = NEW.selected_candidate_id;
+
+        IF selected_state IS DISTINCT FROM 'active' THEN
+            RAISE EXCEPTION
+                'confirmed candidate resolution must select an active candidate'
+                USING ERRCODE = '23514';
+        END IF;
+    END IF;
+
+    RETURN NULL;
+END;
+$$;
+
+CREATE CONSTRAINT TRIGGER candidate_resolution_active_selection
+AFTER INSERT OR UPDATE ON candidate_resolutions
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW
+EXECUTE FUNCTION enforce_confirmed_candidate_is_active();
+
+CREATE FUNCTION prevent_excluding_selected_candidate()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NEW.state <> 'active'
+       AND EXISTS (
+            SELECT 1
+            FROM candidate_resolutions
+            WHERE candidate_set_id = NEW.candidate_set_id
+              AND confirmation_state = 'confirmed'
+              AND selected_candidate_id = NEW.candidate_id
+       )
+    THEN
+        RAISE EXCEPTION
+            'selected confirmed candidate must remain active'
+            USING ERRCODE = '23514';
+    END IF;
+
+    RETURN NULL;
+END;
+$$;
+
+CREATE CONSTRAINT TRIGGER selected_candidate_must_remain_active
+AFTER UPDATE OF state ON entity_candidates
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW
+EXECUTE FUNCTION prevent_excluding_selected_candidate();
+
