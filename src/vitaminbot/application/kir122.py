@@ -73,11 +73,11 @@ _SUBJECTS: Final[dict[str, _SubjectSpec]] = {
         "vitamin_c", "Витамин C", "Vitamin C", "analyte:vitamin-c", AmountBasis.ANALYTE
     ),
     "magnesium": _SubjectSpec(
-        "magnesium", "Магний", "Magnesium", "analyte:magnesium", AmountBasis.ELEMENTAL
+        "magnesium", "Магний", "Magnesium", "analyte:magnesium", AmountBasis.ANALYTE
     ),
-    "zinc": _SubjectSpec("zinc", "Цинк", "Zinc", "analyte:zinc", AmountBasis.ELEMENTAL),
+    "zinc": _SubjectSpec("zinc", "Цинк", "Zinc", "analyte:zinc", AmountBasis.ANALYTE),
     "selenium": _SubjectSpec(
-        "selenium", "Селен", "Selenium", "analyte:selenium", AmountBasis.ELEMENTAL
+        "selenium", "Селен", "Selenium", "analyte:selenium", AmountBasis.ANALYTE
     ),
     "vitamin_b6": _SubjectSpec(
         "vitamin_b6", "Витамин B6", "Vitamin B6", "analyte:vitamin-b6", AmountBasis.ANALYTE
@@ -85,9 +85,9 @@ _SUBJECTS: Final[dict[str, _SubjectSpec]] = {
     "vitamin_b12": _SubjectSpec(
         "vitamin_b12", "Витамин B12", "Vitamin B12", "analyte:vitamin-b12", AmountBasis.ANALYTE
     ),
-    "iron": _SubjectSpec("iron", "Железо", "Iron", "analyte:iron", AmountBasis.ELEMENTAL),
+    "iron": _SubjectSpec("iron", "Железо", "Iron", "analyte:iron", AmountBasis.ANALYTE),
     "calcium": _SubjectSpec(
-        "calcium", "Кальций", "Calcium", "analyte:calcium", AmountBasis.ELEMENTAL
+        "calcium", "Кальций", "Calcium", "analyte:calcium", AmountBasis.ANALYTE
     ),
 }
 
