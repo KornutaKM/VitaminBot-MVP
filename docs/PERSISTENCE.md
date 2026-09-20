@@ -36,4 +36,18 @@ DATABASE_SCHEMA can select an alternate schema for isolated tests.
 
 ## CI PostgreSQL tests
 
-The mandatory Linux CI lane starts the repository PostgreSQL Compose service with CI-only credentials, waits for readiness, executes the full pytest suite against PostgreSQL, and always tears the service and volumes down. The Windows compatibility lane remains non-blocking under the accepted KIR-123 least-privilege deferral.
+The mandatory Linux CI lane uses the Project Control-provisioned KIR-158 PostgreSQL test cluster rather than Docker.
+
+The cluster is separate from the distro default PostgreSQL cluster and is available only through the local Unix socket at `/var/run/postgresql` on port `55432`. It has no TCP listener. The GitHub Actions runner continues to execute as the existing least-privilege OS account and authenticates through PostgreSQL peer authentication as role `nt5user`.
+
+The CI role is intentionally constrained:
+
+- LOGIN and CREATEDB are enabled so a job can create a disposable test database;
+- SUPERUSER, CREATEROLE, REPLICATION, and BYPASSRLS are disabled;
+- no database password or privileged credential is stored in the repository or workflow.
+
+Before tests, the workflow verifies service readiness, peer identity, expected role privileges, the Unix socket, and the absence of a TCP listener. It then creates a per-run database named from the GitHub run ID and attempt, sets DATABASE_URL to that database, runs the full pytest suite against real PostgreSQL, and removes the database in an always-run cleanup step.
+
+Individual persistence tests also use unique schemas and drop them in fixture cleanup. The per-run disposable database provides an outer isolation boundary if a test process fails.
+
+The Windows compatibility lane remains non-blocking under the accepted KIR-123 least-privilege deferral.
