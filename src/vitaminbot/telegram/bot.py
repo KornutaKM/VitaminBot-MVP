@@ -149,7 +149,7 @@ async def _nutrient(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     controller = _nutrient_controller(context)
     if telegram_user_id is None or controller is None:
         return
-    query = " ".join(context.args).strip()
+    query = " ".join(context.args or ()).strip()
     if query:
         screen = await asyncio.to_thread(controller.open, telegram_user_id, query)
     else:

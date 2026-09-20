@@ -384,12 +384,12 @@ class NutrientCardRenderer:
             record = self._dataset.get_record(snapshot.record_id)
             if record is None or record.lifecycle is not ReferenceLifecycle.ACTIVE:
                 return True
-            source = self._dataset.get_source(record.source_key)
+            reference_source = self._dataset.get_source(record.source_key)
             if (
-                source is None
-                or source.lifecycle is not SourceLifecycle.ACTIVE
-                or source.version_label != snapshot.source_version
-                or source.source_url != snapshot.source_url
+                reference_source is None
+                or reference_source.lifecycle is not SourceLifecycle.ACTIVE
+                or reference_source.version_label != snapshot.source_version
+                or reference_source.source_url != snapshot.source_url
             ):
                 return True
         return False
