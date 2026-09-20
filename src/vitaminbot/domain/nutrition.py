@@ -6,7 +6,6 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Final
 
-
 DOMAIN_SCHEMA_VERSION: Final = "1.0.0"
 
 
