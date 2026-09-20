@@ -28,8 +28,8 @@ from vitaminbot.nutrition.card_content import (
 )
 from vitaminbot.nutrition.normalization import ComputationTrace, ComputedAmount
 from vitaminbot.nutrition.reference_values import (
-    DHAForm,
     EU_EFSA_REFERENCE_DATASET,
+    DHAForm,
     ExposureBasis,
     ExposureContext,
     ExposureCoverage,

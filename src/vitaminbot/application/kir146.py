@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
-from typing import Callable
 
 from vitaminbot.application.kir116 import Button, Screen
 from vitaminbot.nutrition.card_content import (
@@ -14,10 +14,10 @@ from vitaminbot.nutrition.card_content import (
 )
 from vitaminbot.nutrition.normalization import ComputedAmount
 from vitaminbot.nutrition.reference_values import (
+    EU_EFSA_REFERENCE_DATASET,
     ComparisonRelation,
     ComparisonResult,
     ComparisonStatus,
-    EU_EFSA_REFERENCE_DATASET,
     ExposureContext,
     Jurisdiction,
     LookupResult,
