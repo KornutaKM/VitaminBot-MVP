@@ -346,10 +346,10 @@ def test_explicit_time_preserves_amount_and_dst_edges_fail_closed(
     with _connect(database_url, schema) as conn:
         rows = conn.execute(
             """
-            SELECT version, consumption_units
+            SELECT plan_version, consumption_units
             FROM planned_intake_events
             WHERE plan_id = %s
-            ORDER BY version
+            ORDER BY plan_version
             """,
             (updated.plan_id,),
         ).fetchall()
