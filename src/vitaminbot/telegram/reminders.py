@@ -101,8 +101,10 @@ def _render_group(group: list[DeliveryClaim]) -> str:
     heading = "Напоминание" if len(group) == 1 else "Напоминания на одно время"
     lines = [heading, ""]
     for claim in group:
-        lines.append(\n            f"• {claim.name}: {_display_quantity(claim.quantity)} " \
-            f"{_display_unit_label(claim.unit_label)}"\n        )
+        lines.append(
+            f"• {claim.name}: {_display_quantity(claim.quantity)} "
+            f"{_display_unit_label(claim.unit_label)}"
+        )
     lines.extend(
         [
             "",
