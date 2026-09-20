@@ -6,7 +6,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import psycopg
-from psycopg import Connection, sql
+from psycopg import sql
 from psycopg.rows import dict_row
 
 
@@ -78,8 +78,8 @@ class KIR116Store:
         self._database_url = database_url
         self._schema = schema
 
-    def _connect(self) -> Connection[dict[str, Any]]:
-        conn: Connection[dict[str, Any]] = psycopg.connect(
+    def _connect(self) -> psycopg.Connection[dict[str, Any]]:
+        conn: psycopg.Connection[dict[str, Any]] = psycopg.connect(
             self._database_url,
             row_factory=dict_row,
         )
@@ -88,7 +88,7 @@ class KIR116Store:
 
     @staticmethod
     def _claim_action(
-        conn: Connection[dict[str, Any]],
+        conn: psycopg.Connection[dict[str, Any]],
         user_id: UUID,
         action_key: str,
         action_type: str,
@@ -117,7 +117,7 @@ class KIR116Store:
 
     @staticmethod
     def _complete_action(
-        conn: Connection[dict[str, Any]],
+        conn: psycopg.Connection[dict[str, Any]],
         user_id: UUID,
         action_key: str,
         result_ref: str | None,
@@ -173,7 +173,7 @@ class KIR116Store:
 
     @staticmethod
     def _upsert_session(
-        conn: Connection[dict[str, Any]],
+        conn: psycopg.Connection[dict[str, Any]],
         user_id: UUID,
         *,
         state: str,
@@ -229,7 +229,7 @@ class KIR116Store:
         return session
 
     @staticmethod
-    def _clear_session(conn: Connection[dict[str, Any]], user_id: UUID) -> None:
+    def _clear_session(conn: psycopg.Connection[dict[str, Any]], user_id: UUID) -> None:
         conn.execute(
             """
             INSERT INTO bot_sessions (user_id, state)
@@ -1290,7 +1290,7 @@ class KIR116Store:
 
     def _locked_session(
         self,
-        conn: Connection[dict[str, Any]],
+        conn: psycopg.Connection[dict[str, Any]],
         user_id: UUID,
         expected_state: str,
     ) -> BotSession:
@@ -1317,7 +1317,7 @@ class KIR116Store:
 
     def _session_for_user(
         self,
-        conn: Connection[dict[str, Any]],
+        conn: psycopg.Connection[dict[str, Any]],
         user_id: UUID,
     ) -> BotSession | None:
         row = conn.execute(
@@ -1339,7 +1339,7 @@ class KIR116Store:
 
     def _draft_for_user(
         self,
-        conn: Connection[dict[str, Any]],
+        conn: psycopg.Connection[dict[str, Any]],
         user_id: UUID,
     ) -> ManualDraft | None:
         row = conn.execute(
@@ -1354,7 +1354,7 @@ class KIR116Store:
 
     def _draft_by_ref(
         self,
-        conn: Connection[dict[str, Any]],
+        conn: psycopg.Connection[dict[str, Any]],
         user_id: UUID,
         draft_id: str | None,
     ) -> ManualDraft | None:
@@ -1372,7 +1372,7 @@ class KIR116Store:
 
     def _profile_in_connection(
         self,
-        conn: Connection[dict[str, Any]],
+        conn: psycopg.Connection[dict[str, Any]],
         user_id: UUID,
     ) -> ProfileRecord:
         row = conn.execute(
@@ -1393,7 +1393,7 @@ class KIR116Store:
 
     def _locked_supplement(
         self,
-        conn: Connection[dict[str, Any]],
+        conn: psycopg.Connection[dict[str, Any]],
         user_id: UUID,
         instance_id: str,
     ) -> SupplementRecord:
@@ -1407,7 +1407,7 @@ class KIR116Store:
 
     def _supplement_by_id(
         self,
-        conn: Connection[dict[str, Any]],
+        conn: psycopg.Connection[dict[str, Any]],
         user_id: UUID,
         instance_id: str,
     ) -> SupplementRecord:
