@@ -173,8 +173,7 @@ def test_ruleset_contains_exactly_the_five_authorized_automatic_rules() -> None:
         SchedulingRuleId.CALCIUM_SPLIT_EVENT_PREFERENCE,
     }
     assert all(
-        "OMEGA3" not in definition.rule_id.value
-        for definition in DEFAULT_RULESET.definitions
+        "OMEGA3" not in definition.rule_id.value for definition in DEFAULT_RULESET.definitions
     )
 
 
@@ -391,8 +390,7 @@ def test_fortified_food_iron_cannot_satisfy_supplemental_trigger() -> None:
 
     assert _matched(result, SchedulingRuleId.IRON25_ZINC_AVOID_SAME_EVENT) == []
     assert any(
-        candidate.reason is RuleReason.IRON_SOURCE_NOT_SUPPLEMENT
-        for candidate in candidates
+        candidate.reason is RuleReason.IRON_SOURCE_NOT_SUPPLEMENT for candidate in candidates
     )
 
 
@@ -418,8 +416,7 @@ def test_two_subthreshold_iron_products_are_not_silently_aggregated() -> None:
 
     assert _matched(result, SchedulingRuleId.IRON25_ZINC_AVOID_SAME_EVENT) == []
     assert any(
-        candidate.reason
-        is RuleReason.MULTIPLE_SUBTHRESHOLD_IRON_AGGREGATION_NOT_VALIDATED
+        candidate.reason is RuleReason.MULTIPLE_SUBTHRESHOLD_IRON_AGGREGATION_NOT_VALIDATED
         and candidate.status is RuleStatus.INSUFFICIENT_EVIDENCE
         for candidate in candidates
     )
@@ -472,8 +469,7 @@ def test_one_indivisible_1000_mg_calcium_unit_cannot_become_two_doses() -> None:
 
     assert _matched(result, SchedulingRuleId.CALCIUM_SPLIT_EVENT_PREFERENCE) == []
     assert any(
-        candidate.reason is RuleReason.INTACT_UNITS_NOT_REARRANGEABLE
-        for candidate in candidates
+        candidate.reason is RuleReason.INTACT_UNITS_NOT_REARRANGEABLE for candidate in candidates
     )
 
 
@@ -753,9 +749,7 @@ def _daily_aggregate(
         known_total=Decimal(value),
         unit=unit,
         is_complete=complete,
-        issues=()
-        if complete
-        else (AggregationIssue.UNRESOLVED_CONTRIBUTOR,),
+        issues=() if complete else (AggregationIssue.UNRESOLVED_CONTRIBUTOR,),
         contributors=(contributor,),
         suppressed_exact_repeat_ids=(),
     )
