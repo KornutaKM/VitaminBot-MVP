@@ -112,14 +112,44 @@ class UnavailableProvider(FixtureProvider):
         raise ProviderExecutionError("fixture provider unavailable")
 
 
+class ChangingCandidateProvider(FixtureProvider):
+    def extract(
+        self,
+        image: bytes,
+        *,
+        media_type: str,
+        source_asset: SourceAsset,
+    ) -> ProviderExtractionResult:
+        result = super().extract(image, media_type=media_type, source_asset=source_asset)
+        if self.calls == 1:
+            return result
+
+        payload = result.extraction.to_payload()
+        rows = cast(list[object], payload["rows"])
+        row = cast(dict[str, object], rows[0])
+        quantity = cast(dict[str, object], row["quantity"])
+        quantity["raw_text"] = "1200"
+        quantity["normalized_candidate"] = "1200"
+        return ProviderExtractionResult(
+            extraction=validate_extraction_payload(payload),
+            revision=result.revision,
+            raw_response_sha256=result.raw_response_sha256,
+        )
+
+
 class MemorySink:
     def __init__(self, *, fail: bool = False) -> None:
         self.fail = fail
         self.records: dict[str, ConfirmedLabelRecord] = {}
+        self.attempted_keys: list[str] = []
 
     def persist(self, record: ConfirmedLabelRecord) -> None:
+        self.attempted_keys.append(record.idempotency_key)
         if self.fail:
             raise RuntimeError("persistence failed")
+        existing = self.records.get(record.idempotency_key)
+        if existing is not None and existing != record:
+            raise RuntimeError("idempotency key collision")
         self.records.setdefault(record.idempotency_key, record)
 
 
@@ -171,6 +201,7 @@ def _confirm_all_request(candidate, *, clock: MutableClock) -> ConfirmationReque
         for field in fields
     )
     return ConfirmationRequest(
+        expected_candidate_id=candidate.candidate_id,
         expected_revision=candidate.extraction.confirmation_revision,
         displayed_field_ids=tuple(field.field_id for field in fields),
         decisions=decisions,
@@ -265,6 +296,76 @@ def test_expired_source_requires_reupload_or_manual_entry() -> None:
     assert result.reason is ManualFallbackReason.SOURCE_EXPIRED
 
 
+def test_project_candidate_identity_separates_captures_with_duplicate_provider_ids() -> None:
+    clock = MutableClock()
+    provider = FixtureProvider()
+    pipeline, _, sink = _pipeline(clock=clock, provider=provider)
+    first_capture = pipeline.capture(
+        capture_id="capture-a",
+        image=IMAGE_BYTES,
+        media_type="image/png",
+    )
+    second_capture = pipeline.capture(
+        capture_id="capture-b",
+        image=IMAGE_BYTES,
+        media_type="image/png",
+    )
+
+    first = pipeline.extract(first_capture)
+    second = pipeline.extract(second_capture)
+
+    assert not isinstance(first, ManualEntryFallback)
+    assert not isinstance(second, ManualEntryFallback)
+    assert first.extraction.extraction_id == second.extraction.extraction_id
+    assert first.candidate_id != second.candidate_id
+
+    first_record = pipeline.confirm_and_persist(
+        first,
+        _confirm_all_request(first, clock=clock),
+    )
+    second_record = pipeline.confirm_and_persist(
+        second,
+        _confirm_all_request(second, clock=clock),
+    )
+
+    assert isinstance(first_record, ConfirmedLabelRecord)
+    assert isinstance(second_record, ConfirmedLabelRecord)
+    assert first_record.idempotency_key != second_record.idempotency_key
+    assert set(sink.records) == {
+        first_record.idempotency_key,
+        second_record.idempotency_key,
+    }
+
+
+def test_changed_reextraction_rejects_confirmation_bound_to_prior_candidate() -> None:
+    clock = MutableClock()
+    provider = ChangingCandidateProvider()
+    pipeline, _, sink = _pipeline(clock=clock, provider=provider)
+    capture = pipeline.capture(
+        capture_id="same-capture",
+        image=IMAGE_BYTES,
+        media_type="image/png",
+    )
+
+    first = pipeline.extract(capture)
+    assert not isinstance(first, ManualEntryFallback)
+    stale_request = _confirm_all_request(first, clock=clock)
+
+    second = pipeline.extract(capture)
+    assert not isinstance(second, ManualEntryFallback)
+    assert first.extraction.extraction_id == second.extraction.extraction_id
+    assert first.extraction.confirmation_revision == second.extraction.confirmation_revision == 0
+    assert tuple(field.field_id for field in iter_label_fields(first.extraction)) == tuple(
+        field.field_id for field in iter_label_fields(second.extraction)
+    )
+    assert first.candidate_id != second.candidate_id
+
+    with pytest.raises(StaleConfirmationError, match="candidate identity"):
+        pipeline.confirm_and_persist(second, stale_request)
+
+    assert sink.records == {}
+
+
 def test_confirmation_rejects_stale_revision_and_incomplete_scope() -> None:
     clock = MutableClock()
     pipeline, _, _, candidate = _candidate(clock=clock)
@@ -274,6 +375,7 @@ def test_confirmation_rejects_stale_revision_and_incomplete_scope() -> None:
         pipeline.confirm_and_persist(
             candidate,
             ConfirmationRequest(
+                expected_candidate_id=candidate.candidate_id,
                 expected_revision=1,
                 displayed_field_ids=request.displayed_field_ids,
                 decisions=request.decisions,
@@ -285,6 +387,7 @@ def test_confirmation_rejects_stale_revision_and_incomplete_scope() -> None:
         pipeline.confirm_and_persist(
             candidate,
             ConfirmationRequest(
+                expected_candidate_id=candidate.candidate_id,
                 expected_revision=0,
                 displayed_field_ids=request.displayed_field_ids[:-1],
                 decisions=request.decisions[:-1],
@@ -347,6 +450,7 @@ def test_user_correction_preserves_original_text_and_clears_provider_normalizati
                 FieldDecision(field_id=field.field_id, action=FieldDecisionAction.CONFIRM)
             )
     request = ConfirmationRequest(
+        expected_candidate_id=candidate.candidate_id,
         expected_revision=0,
         displayed_field_ids=tuple(field.field_id for field in fields),
         decisions=tuple(decisions),
@@ -365,6 +469,29 @@ def test_user_correction_preserves_original_text_and_clears_provider_normalizati
     assert corrected.confirmation_state is FieldConfirmationState.USER_CORRECTED
     assert corrected.corrections[0].original_raw_text == "1000"
     assert corrected.corrections[0].corrected_raw_text == "1200"
+
+
+def test_exact_confirmation_retry_reuses_project_owned_idempotency_key() -> None:
+    clock = MutableClock()
+    sink = MemorySink(fail=True)
+    pipeline, _, _, candidate = _candidate(clock=clock, sink=sink)
+    request = _confirm_all_request(candidate, clock=clock)
+
+    with pytest.raises(RuntimeError, match="persistence failed"):
+        pipeline.confirm_and_persist(candidate, request)
+
+    assert len(sink.attempted_keys) == 1
+    first_key = sink.attempted_keys[0]
+    assert first_key.startswith(f"{candidate.candidate_id}:confirmation:")
+
+    sink.fail = False
+    record = pipeline.confirm_and_persist(candidate, request)
+
+    assert isinstance(record, ConfirmedLabelRecord)
+    assert record.candidate_id == candidate.candidate_id
+    assert record.idempotency_key == first_key
+    assert sink.attempted_keys == [first_key, first_key]
+    assert sink.records == {first_key: record}
 
 
 def test_persistence_failure_retains_source_for_safe_retry() -> None:
