@@ -1047,7 +1047,8 @@ class KIR122Controller:
                             ),
                             escalation_path=None,
                             non_droppable_warnings=(
-                                "Неоднозначное сопоставление не является отрицательным результатом.",
+                                "Неоднозначное сопоставление не является "
+                            "отрицательным результатом.",
                             ),
                             comparison_context=comparison_context,
                             contributors=contributors,
