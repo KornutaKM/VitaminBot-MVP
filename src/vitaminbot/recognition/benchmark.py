@@ -229,9 +229,7 @@ def _boolean(value: object, field_name: str) -> bool:
 
 
 def _string_tuple(value: object, field_name: str) -> tuple[str, ...]:
-    return tuple(
-        _string(item, f"{field_name} item") for item in _sequence(value, field_name)
-    )
+    return tuple(_string(item, f"{field_name} item") for item in _sequence(value, field_name))
 
 
 def _enum_value[T: StrEnum](
@@ -243,9 +241,7 @@ def _enum_value[T: StrEnum](
     try:
         return enum_type(raw)
     except ValueError as exc:
-        raise BenchmarkManifestError(
-            f"{field_name} has unsupported value {raw!r}"
-        ) from exc
+        raise BenchmarkManifestError(f"{field_name} has unsupported value {raw!r}") from exc
 
 
 def _parse_field_roles(value: object) -> tuple[tuple[str, FieldRole], ...]:
@@ -328,12 +324,12 @@ def _validate_split_leakage(cases: tuple[BenchmarkCaseManifest, ...]) -> None:
             groups.setdefault(group, set()).add(case.split)
         leaked = sorted(group for group, splits in groups.items() if len(splits) > 1)
         if leaked:
-            raise BenchmarkManifestError(
-                f"{attr} groups cross corpus splits: {', '.join(leaked)}"
-            )
+            raise BenchmarkManifestError(f"{attr} groups cross corpus splits: {', '.join(leaked)}")
 
 
-def load_frozen_corpus(manifest_path: Path) -> tuple[
+def load_frozen_corpus(
+    manifest_path: Path,
+) -> tuple[
     FrozenCorpusManifest,
     tuple[LoadedBenchmarkCase, ...],
 ]:
@@ -380,13 +376,9 @@ def load_frozen_corpus(manifest_path: Path) -> tuple[
         )
         gold_bytes = gold_file.read_bytes()
         if sha256(image).hexdigest() != case.image_sha256:
-            raise BenchmarkManifestError(
-                f"image checksum mismatch for case {case.case_id!r}"
-            )
+            raise BenchmarkManifestError(f"image checksum mismatch for case {case.case_id!r}")
         if sha256(gold_bytes).hexdigest() != case.gold_sha256:
-            raise BenchmarkManifestError(
-                f"gold checksum mismatch for case {case.case_id!r}"
-            )
+            raise BenchmarkManifestError(f"gold checksum mismatch for case {case.case_id!r}")
         gold_raw = json.loads(gold_bytes.decode("utf-8"))
         gold_payload = _mapping(gold_raw, f"gold payload for {case.case_id}")
         try:
@@ -419,14 +411,7 @@ def _role_errors(
     role: FieldRole,
 ) -> tuple[str, ...]:
     role_map = dict(case.field_roles)
-    return tuple(
-        sorted(
-            field_id
-            for field_id in error_ids
-            if role_map.get(field_id) is role
-        )
-    )
-
+    return tuple(sorted(field_id for field_id in error_ids if role_map.get(field_id) is role))
 
 
 
@@ -475,11 +460,7 @@ def score_extraction(
         if expected.source_regions and not actual_field.source_regions:
             region_missing.add(field_id)
 
-    generic_errors = (
-        set(missing)
-        | raw_mismatches
-        | normalized_mismatches
-    )
+    generic_errors = set(missing) | raw_mismatches | normalized_mismatches
     expected_needs_resolution = (
         case.gold.record_state
         in (RecordState.USER_RESOLUTION_REQUIRED, RecordState.MANUAL_ENTRY_REQUIRED)
@@ -540,9 +521,7 @@ def score_payload(
     try:
         actual = validate_extraction_payload(payload)
     except RecognitionValidationError as exc:
-        expected_ids = tuple(
-            sorted(field.field_id for field in iter_label_fields(case.gold))
-        )
+        expected_ids = tuple(sorted(field.field_id for field in iter_label_fields(case.gold)))
         return BenchmarkScore(
             schema_valid=False,
             schema_error=str(exc),
