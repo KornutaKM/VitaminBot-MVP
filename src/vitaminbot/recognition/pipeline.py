@@ -176,9 +176,7 @@ class FieldDecision:
             if self.corrected_raw_text is None or not self.corrected_raw_text.strip():
                 raise IncompleteConfirmationError("correct action requires corrected_raw_text")
         elif self.corrected_raw_text is not None:
-            raise IncompleteConfirmationError(
-                "corrected_raw_text is valid only for correct action"
-            )
+            raise IncompleteConfirmationError("corrected_raw_text is valid only for correct action")
 
 
 @dataclass(frozen=True, slots=True)
@@ -341,11 +339,7 @@ class InMemoryTransientImageStore:
         now = self._clock()
         _require_aware(now, "clock value")
         with self._lock:
-            expired = [
-                key
-                for key, (handle, _) in self._items.items()
-                if handle.expires_at <= now
-            ]
+            expired = [key for key, (handle, _) in self._items.items() if handle.expires_at <= now]
             for key in expired:
                 del self._items[key]
             return len(expired)
@@ -394,10 +388,7 @@ def _validate_provider_candidate(
     if extraction.record_state is not RecordState.EXTRACTED_UNCONFIRMED:
         raise ProviderContractError("provider output must start as extracted_unconfirmed")
     fields = iter_label_fields(extraction)
-    if any(
-        field.confirmation_state is not FieldConfirmationState.UNCONFIRMED
-        for field in fields
-    ):
+    if any(field.confirmation_state is not FieldConfirmationState.UNCONFIRMED for field in fields):
         raise ProviderContractError("provider output cannot confirm any field")
     if len({field.field_id for field in fields}) != len(fields):
         raise ProviderContractError("provider field IDs must be unique for confirmation")
@@ -645,8 +636,7 @@ class PhotoRecognitionPipeline:
                 capture_id=candidate.capture.capture_id,
                 reason=ManualFallbackReason.SOURCE_EXPIRED,
                 detail=(
-                    "source image expired before confirmation; "
-                    "request re-upload or manual entry"
+                    "source image expired before confirmation; request re-upload or manual entry"
                 ),
             )
 
@@ -701,9 +691,7 @@ class PhotoRecognitionPipeline:
             extraction=accepted,
             provenance=candidate.provenance,
             confirmed_at=request.confirmed_at,
-            idempotency_key=(
-                f"{accepted.extraction_id}:{accepted.confirmation_revision}"
-            ),
+            idempotency_key=(f"{accepted.extraction_id}:{accepted.confirmation_revision}"),
         )
         self._sink.persist(record)
         self._image_store.delete(candidate.capture.image)
