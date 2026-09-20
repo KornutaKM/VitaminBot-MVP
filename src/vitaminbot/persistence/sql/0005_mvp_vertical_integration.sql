@@ -20,8 +20,11 @@ CREATE TABLE kir122_composition_sessions (
     FOREIGN KEY (tracked_instance_id, formulation_id)
         REFERENCES user_supplements(instance_id, formulation_id)
         ON DELETE CASCADE,
-    FOREIGN KEY (formulation_id, serving_basis_id, consumption_unit_id)
-        REFERENCES product_servings(formulation_id, basis_id, consumption_unit_id)
+    FOREIGN KEY (formulation_id, serving_basis_id)
+        REFERENCES product_servings(formulation_id, basis_id)
+        ON DELETE RESTRICT,
+    FOREIGN KEY (formulation_id, consumption_unit_id)
+        REFERENCES consumption_units(formulation_id, unit_id)
         ON DELETE RESTRICT,
     CHECK ((pending_value IS NULL) = (pending_unit IS NULL)),
     CHECK (pending_value IS NULL OR pending_value >= 0),
