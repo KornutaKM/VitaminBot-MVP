@@ -413,6 +413,7 @@ def _role_errors(
     role_map = dict(case.field_roles)
     return tuple(sorted(field_id for field_id in error_ids if role_map.get(field_id) is role))
 
+
 def require_external_processing_allowed(case: BenchmarkCaseManifest) -> None:
     """Fail closed before a benchmark case is sent to an external provider."""
 
