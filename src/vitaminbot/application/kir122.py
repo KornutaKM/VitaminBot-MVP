@@ -7,6 +7,16 @@ from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
 from vitaminbot.application.kir116 import Button, Screen
+from vitaminbot.application.safety_envelope import (
+    SafetyComparisonContext,
+    SafetyContributor,
+    SafetyEnvelope,
+    SafetyEvidenceState,
+    SafetyFact,
+    SafetyProvenance,
+    SafetyStatus,
+    render_safety_envelopes,
+)
 from vitaminbot.domain import (
     AmountBasis,
     AmountRecord,
@@ -105,17 +115,6 @@ class VerticalView:
     aggregation: DailyAggregationResult
     rule_result: RuleEngineResult
     item_names: dict[str, str]
-
-
-@dataclass(frozen=True, slots=True)
-class ReferencePresentation:
-    subject_name: str
-    reference_type: ReferenceType
-    state_text: str
-    comparison_text: str | None
-    source_title: str | None
-    source_url: str | None
-    source_version: str | None
 
 
 class KIR122Controller:
@@ -317,38 +316,17 @@ class KIR122Controller:
             ),
         )
 
+    def safety_envelopes(self, telegram_user_id: int) -> tuple[SafetyEnvelope, ...]:
+        user_id = self._base_store.ensure_user(telegram_user_id)
+        return self._reference_envelopes(self._build_view(user_id))
+
     def safety(self, telegram_user_id: int) -> Screen:
         user_id = self._base_store.ensure_user(telegram_user_id)
         view = self._build_view(user_id)
-        presentations = self._reference_presentations(view)
-        lines = [
-            "Справочные значения и ограничения",
-            "",
-            "Здесь нет персональной рекомендации по дозе. "
-            "Неизвестное или неприменимое значение не заменяется взрослым значением по умолчанию.",
-        ]
-        if not presentations:
-            lines.extend(
-                [
-                    "",
-                    "Для текущих подтверждённых итогов нет однозначно сопоставимого "
-                    "справочного типа. Это не означает отсутствие риска или ограничений.",
-                ]
-            )
-        for item in presentations:
-            lines.extend(
-                [
-                    "",
-                    f"{item.subject_name} — {self._reference_label(item.reference_type)}",
-                ]
-            )
-            lines.append(item.state_text)
-            if item.comparison_text is not None:
-                lines.append(item.comparison_text)
-
+        envelopes = self._reference_envelopes(view)
         short_revision = self._short_revision(view.snapshot.context_revision)
         return Screen(
-            text="\n".join(lines),
+            text=render_safety_envelopes(envelopes),
             rows=(
                 (Button("Почему / источники", f"k122src:{short_revision}"),),
                 (Button("Итоги", "k122tot"), Button("Сегодня", "k120today")),
@@ -765,8 +743,9 @@ class KIR122Controller:
         except ValueError:
             return None
 
-    def _reference_presentations(self, view: VerticalView) -> tuple[ReferencePresentation, ...]:
-        rows: list[ReferencePresentation] = []
+    def _reference_envelopes(self, view: VerticalView) -> tuple[SafetyEnvelope, ...]:
+        rows: list[SafetyEnvelope] = []
+        names = {item.instance_id: item.name for item in view.snapshot.supplements}
         for aggregate in view.aggregation.aggregates:
             candidates = tuple(
                 record
@@ -783,7 +762,37 @@ class KIR122Controller:
             )
             if not pairs:
                 continue
+
+            subject_name = self._subject_name(aggregate.key.subject_id)
             amount = self._aggregate_amount(aggregate)
+            contributors = tuple(
+                SafetyContributor(
+                    tracked_instance_id=contributor.tracked_instance_id,
+                    display_name=names.get(
+                        contributor.tracked_instance_id,
+                        "Подтверждённая добавка",
+                    ),
+                    normalized_amount=(
+                        f"{self._decimal(contributor.normalized_value)} "
+                        f"{self._unit_label(contributor.normalized_unit)}"
+                    ),
+                )
+                for contributor in aggregate.contributors
+            )
+            daily_fact = (
+                ()
+                if amount is None
+                else (
+                    SafetyFact(
+                        key="confirmed_daily_total",
+                        value=(
+                            f"Подтверждённый дневной итог: {self._decimal(amount.value)} "
+                            f"{self._unit_label(amount.unit)}."
+                        ),
+                    ),
+                )
+            )
+
             for substance_key, reference_type in pairs:
                 lookup = lookup_reference(
                     EU_EFSA_REFERENCE_DATASET,
@@ -795,54 +804,255 @@ class KIR122Controller:
                         context_revision=view.snapshot.context_revision,
                     ),
                 )
-                subject_name = self._subject_name(aggregate.key.subject_id)
+                comparison_context = SafetyComparisonContext(
+                    reference_type=self._reference_label(reference_type),
+                    reference_record_id=None,
+                    amount_basis=aggregate.key.amount_basis.value,
+                    equivalence_basis=aggregate.key.equivalence_basis,
+                    relation=None,
+                    dataset_version=DATASET_VERSION,
+                )
                 if lookup.status is not LookupStatus.MATCHED or lookup.match is None:
+                    evidence_state = (
+                        SafetyEvidenceState.AMBIGUOUS
+                        if lookup.status
+                        in {
+                            LookupStatus.AMBIGUOUS,
+                            LookupStatus.INDETERMINATE,
+                            LookupStatus.PARTIAL_COVERAGE,
+                        }
+                        else SafetyEvidenceState.MISSING
+                    )
                     rows.append(
-                        ReferencePresentation(
+                        SafetyEnvelope(
                             subject_name=subject_name,
-                            reference_type=reference_type,
-                            state_text=(
-                                "Не могу оценить для текущего контекста применимости. "
-                                "Значение не подставлено и не заменено взрослым значением."
+                            status=SafetyStatus.CANNOT_ASSESS,
+                            classification="reference_applicability",
+                            known_facts=daily_fact,
+                            unknown_or_ambiguous=(
+                                SafetyFact(
+                                    key="reference_applicability",
+                                    value=(
+                                        "Не установлена точная применимость справочного "
+                                        "значения к текущему контексту."
+                                    ),
+                                ),
                             ),
-                            comparison_text=None,
-                            source_title=None,
-                            source_url=None,
-                            source_version=None,
+                            withheld_conclusion=(
+                                "Персональный вывод о безопасности по этому "
+                                "справочному значению не сделан."
+                            ),
+                            provenance=(),
+                            resolution_path=(
+                                "Нужен подтверждённый контекст применимости по принятой "
+                                "политике; взрослое значение по умолчанию не используется."
+                            ),
+                            escalation_path=None,
+                            non_droppable_warnings=(
+                                "Неизвестная применимость не означает отсутствие риска.",
+                                "Справочное значение нельзя превращать в персональную дозу.",
+                            ),
+                            comparison_context=comparison_context,
+                            contributors=contributors,
+                            evidence_state=evidence_state,
+                            context_revision=view.snapshot.context_revision,
                         )
                     )
                     continue
 
                 record = lookup.match.record
                 source = lookup.match.source
-                state_text = self._reference_state_text(record)
-                comparison_text: str | None = None
-                if amount is not None and record.value is not None:
-                    comparison = compare_amount_to_reference(
-                        amount,
-                        lookup,
-                        context_revision=view.snapshot.context_revision,
-                    )
-                    if comparison.relation is not None:
-                        relation = {
-                            "below": "ниже",
-                            "equal": "равен",
-                            "above": "выше",
-                        }[comparison.relation.value]
-                        comparison_text = (
-                            f"Подтверждённый дневной итог {relation} этого значения. "
-                            "Это сравнение не является персональным выводом о безопасности "
-                            "и не задаёт дозу."
-                        )
-                rows.append(
-                    ReferencePresentation(
-                        subject_name=subject_name,
-                        reference_type=reference_type,
-                        state_text=state_text,
-                        comparison_text=comparison_text,
-                        source_title=source.title,
+                provenance = (
+                    SafetyProvenance(
+                        source_key=record.source_key,
+                        title=source.title,
                         source_url=source.source_url,
-                        source_version=source.version_label,
+                        version=source.version_label,
+                        source_locator=record.source_locator,
+                    ),
+                )
+                comparison_context = SafetyComparisonContext(
+                    reference_type=self._reference_label(record.reference_type),
+                    reference_record_id=record.record_id,
+                    amount_basis=record.amount_basis.value,
+                    equivalence_basis=record.equivalence_basis,
+                    relation=None,
+                    dataset_version=record.dataset_version,
+                )
+                reference_fact = SafetyFact(
+                    key="reference_state",
+                    value=self._reference_state_text(record),
+                )
+
+                if record.status not in {
+                    ReferenceStatus.ESTABLISHED_NUMERIC,
+                    ReferenceStatus.CONDITIONAL_NUMERIC,
+                }:
+                    rows.append(
+                        SafetyEnvelope(
+                            subject_name=subject_name,
+                            status=SafetyStatus.CANNOT_ASSESS,
+                            classification="reference_limit_availability",
+                            known_facts=daily_fact + (reference_fact,),
+                            unknown_or_ambiguous=(
+                                SafetyFact(
+                                    key="numeric_reference_limit",
+                                    value=(
+                                        "Для этого справочного типа нет применимого "
+                                        "числового значения."
+                                    ),
+                                ),
+                            ),
+                            withheld_conclusion=(
+                                "Числовой верхний предел и персональный вывод о "
+                                "безопасности не выведены."
+                            ),
+                            provenance=provenance,
+                            resolution_path=(
+                                "Использовать только применимый типизированный источник; "
+                                "отсутствующее числовое значение не подставляется."
+                            ),
+                            escalation_path=None,
+                            non_droppable_warnings=(
+                                "Отсутствие числового UL не означает неограниченную безопасность.",
+                                "Справочное значение нельзя превращать в персональную дозу.",
+                            ),
+                            comparison_context=comparison_context,
+                            contributors=contributors,
+                            evidence_state=SafetyEvidenceState.SUPPORTED,
+                            context_revision=view.snapshot.context_revision,
+                        )
+                    )
+                    continue
+
+                if amount is None or record.value is None:
+                    rows.append(
+                        SafetyEnvelope(
+                            subject_name=subject_name,
+                            status=SafetyStatus.CANNOT_ASSESS,
+                            classification="daily_exposure_comparison",
+                            known_facts=(reference_fact,),
+                            unknown_or_ambiguous=(
+                                SafetyFact(
+                                    key="complete_daily_exposure",
+                                    value=(
+                                        "Полный подтверждённый дневной итог для "
+                                        "сопоставления недоступен."
+                                    ),
+                                ),
+                            ),
+                            withheld_conclusion=(
+                                "Сопоставление дневного итога и персональный вывод "
+                                "о безопасности не сделаны."
+                            ),
+                            provenance=provenance,
+                            resolution_path=(
+                                "Нужно разрешить состав, единицы, порцию и текущий план "
+                                "для всех учитываемых вкладов."
+                            ),
+                            escalation_path=None,
+                            non_droppable_warnings=(
+                                "Неполный итог не считается нулевым.",
+                                "Справочное значение нельзя превращать в персональную дозу.",
+                            ),
+                            comparison_context=comparison_context,
+                            contributors=contributors,
+                            evidence_state=SafetyEvidenceState.AMBIGUOUS,
+                            context_revision=view.snapshot.context_revision,
+                        )
+                    )
+                    continue
+
+                comparison = compare_amount_to_reference(
+                    amount,
+                    lookup,
+                    context_revision=view.snapshot.context_revision,
+                )
+                relation = None if comparison.relation is None else comparison.relation.value
+                if relation is None:
+                    rows.append(
+                        SafetyEnvelope(
+                            subject_name=subject_name,
+                            status=SafetyStatus.CANNOT_ASSESS,
+                            classification="reference_comparison",
+                            known_facts=daily_fact + (reference_fact,),
+                            unknown_or_ambiguous=(
+                                SafetyFact(
+                                    key="comparison",
+                                    value="Сопоставление не удалось выполнить однозначно.",
+                                ),
+                            ),
+                            withheld_conclusion=(
+                                "Персональный вывод о безопасности не сделан."
+                            ),
+                            provenance=provenance,
+                            resolution_path=(
+                                "Нужно устранить несовместимость основы, единицы "
+                                "или контекста справочного значения."
+                            ),
+                            escalation_path=None,
+                            non_droppable_warnings=(
+                                "Неоднозначное сопоставление не является отрицательным результатом.",
+                            ),
+                            comparison_context=comparison_context,
+                            contributors=contributors,
+                            evidence_state=SafetyEvidenceState.AMBIGUOUS,
+                            context_revision=view.snapshot.context_revision,
+                        )
+                    )
+                    continue
+
+                comparison_context = SafetyComparisonContext(
+                    reference_type=self._reference_label(record.reference_type),
+                    reference_record_id=record.record_id,
+                    amount_basis=record.amount_basis.value,
+                    equivalence_basis=record.equivalence_basis,
+                    relation=relation,
+                    dataset_version=record.dataset_version,
+                )
+                status = SafetyStatus.INFORMATION
+                warnings = [
+                    "Сопоставление само по себе не устанавливает персональную безопасность.",
+                    "Справочное значение нельзя превращать в персональную дозу.",
+                ]
+                withheld: str | None = None
+                if record.reference_type is ReferenceType.UL and relation == "above":
+                    status = SafetyStatus.POTENTIAL_REFERENCE_LIMIT_CONCERN
+                    withheld = (
+                        "Это сопоставление не является диагнозом токсичности "
+                        "или подтверждением вреда."
+                    )
+                    warnings.append(
+                        "Превышение UL — потенциальный справочный сигнал, а не диагноз токсичности."
+                    )
+                elif record.reference_type is ReferenceType.SAFE_LEVEL:
+                    warnings.append(
+                        "SAFE_LEVEL — отдельный справочный тип: это не UL, не максимум "
+                        "и не персональная доза."
+                    )
+                    if relation == "above":
+                        status = SafetyStatus.CAUTION
+                        withheld = (
+                            "Сопоставление с SAFE_LEVEL не превращено в UL "
+                            "или диагноз токсичности."
+                        )
+
+                rows.append(
+                    SafetyEnvelope(
+                        subject_name=subject_name,
+                        status=status,
+                        classification="reference_comparison",
+                        known_facts=daily_fact + (reference_fact,),
+                        unknown_or_ambiguous=(),
+                        withheld_conclusion=withheld,
+                        provenance=provenance,
+                        resolution_path=None,
+                        escalation_path=None,
+                        non_droppable_warnings=tuple(warnings),
+                        comparison_context=comparison_context,
+                        contributors=contributors,
+                        evidence_state=SafetyEvidenceState.SUPPORTED,
+                        context_revision=view.snapshot.context_revision,
                     )
                 )
         return tuple(rows)
@@ -967,11 +1177,11 @@ class KIR122Controller:
         view = self._build_view(user_id)
         if self._short_revision(view.snapshot.context_revision) != expected_revision:
             return self._stale_screen()
-        presentations = self._reference_presentations(view)
+        envelopes = self._reference_envelopes(view)
         sources = {
-            (item.source_title, item.source_url, item.source_version)
-            for item in presentations
-            if item.source_title is not None and item.source_url is not None
+            (source.title, source.source_url, source.version)
+            for envelope in envelopes
+            for source in envelope.provenance
         }
         lines = [
             "Почему / источники",
