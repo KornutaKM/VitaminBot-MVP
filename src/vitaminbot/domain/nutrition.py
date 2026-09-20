@@ -413,9 +413,7 @@ class ServingDefinition:
             self.basis_type is QuantityBasis.PER_CONSUMPTION_UNIT
             and self.consumption_unit_id is None
         ):
-            raise DomainValidationError(
-                "per-consumption-unit basis requires a consumption_unit_id"
-            )
+            raise DomainValidationError("per-consumption-unit basis requires a consumption_unit_id")
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -492,9 +490,7 @@ class AmountRecord:
             and self.quantity_basis_id is None
             and self.resolution_status is ResolutionStatus.RESOLVED
         ):
-            raise DomainValidationError(
-                "resolved label-basis amount requires quantity_basis_id"
-            )
+            raise DomainValidationError("resolved label-basis amount requires quantity_basis_id")
 
         if self.evidence_status is EvidenceStatus.DERIVED:
             if self.derivation is None:
@@ -502,9 +498,7 @@ class AmountRecord:
             if self.resolution_status is not ResolutionStatus.RESOLVED:
                 raise DomainValidationError("derived amount must be resolved")
         elif self.derivation is not None:
-            raise DomainValidationError(
-                "derivation metadata is only valid for derived evidence"
-            )
+            raise DomainValidationError("derivation metadata is only valid for derived evidence")
 
         if self.amount_basis is AmountBasis.EQUIVALENT:
             if self.equivalence_basis is None:
@@ -513,32 +507,38 @@ class AmountRecord:
                 )
             _require_nonempty(self.equivalence_basis, "equivalence_basis")
         elif self.equivalence_basis is not None:
-            raise DomainValidationError(
-                "equivalence_basis is only valid for equivalent amounts"
-            )
+            raise DomainValidationError("equivalence_basis is only valid for equivalent amounts")
 
-        if self.amount_basis in (
-            AmountBasis.ANALYTE,
-            AmountBasis.ELEMENTAL,
-            AmountBasis.EQUIVALENT,
-        ) and self.subject_kind is not SubjectKind.ANALYTE:
+        if (
+            self.amount_basis
+            in (
+                AmountBasis.ANALYTE,
+                AmountBasis.ELEMENTAL,
+                AmountBasis.EQUIVALENT,
+            )
+            and self.subject_kind is not SubjectKind.ANALYTE
+        ):
             raise DomainValidationError(
                 "analyte/elemental/equivalent amounts must reference an analyte subject"
             )
 
-        if self.amount_basis in (
-            AmountBasis.INGREDIENT_COMPOUND,
-            AmountBasis.MATERIAL,
-        ) and self.subject_kind is not SubjectKind.INGREDIENT:
+        if (
+            self.amount_basis
+            in (
+                AmountBasis.INGREDIENT_COMPOUND,
+                AmountBasis.MATERIAL,
+            )
+            and self.subject_kind is not SubjectKind.INGREDIENT
+        ):
             raise DomainValidationError(
                 "compound/material amounts must reference an ingredient subject"
             )
 
     @property
     def deterministically_usable(self) -> bool:
-        return (
-            self.resolution_status is ResolutionStatus.RESOLVED
-            and self.evidence_status in (EvidenceStatus.DECLARED, EvidenceStatus.DERIVED)
+        return self.resolution_status is ResolutionStatus.RESOLVED and self.evidence_status in (
+            EvidenceStatus.DECLARED,
+            EvidenceStatus.DERIVED,
         )
 
     def to_payload(self) -> dict[str, object]:
@@ -559,9 +559,7 @@ class AmountRecord:
             "quantity_basis_id": self.quantity_basis_id,
             "equivalence_basis": self.equivalence_basis,
             "raw_text": self.raw_text,
-            "derivation": self.derivation.to_payload()
-            if self.derivation is not None
-            else None,
+            "derivation": self.derivation.to_payload() if self.derivation is not None else None,
         }
 
 
@@ -707,9 +705,7 @@ class CandidateResolution:
     candidate_set_id: str
     candidates: tuple[EntityCandidate, ...]
     confirmation_state: ConfirmationState = ConfirmationState.UNCONFIRMED
-    scientific_resolution_state: ScientificResolutionState = (
-        ScientificResolutionState.NOT_EVALUATED
-    )
+    scientific_resolution_state: ScientificResolutionState = ScientificResolutionState.NOT_EVALUATED
     selected_candidate_id: str | None = None
 
     def __post_init__(self) -> None:
@@ -721,9 +717,7 @@ class CandidateResolution:
         if len(set(candidate_ids)) != len(candidate_ids):
             raise DomainValidationError("candidate IDs must be unique")
 
-        candidate_by_id = {
-            candidate.candidate_id: candidate for candidate in self.candidates
-        }
+        candidate_by_id = {candidate.candidate_id: candidate for candidate in self.candidates}
 
         if self.selected_candidate_id is not None:
             _require_nonempty(self.selected_candidate_id, "selected_candidate_id")
