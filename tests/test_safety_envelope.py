@@ -33,9 +33,7 @@ def _cannot_assess() -> SafetyEnvelope:
         provenance=(),
         resolution_path="Нужно подтвердить требуемый контекст применимости.",
         escalation_path=None,
-        non_droppable_warnings=(
-            "Неизвестная применимость не означает отсутствие риска.",
-        ),
+        non_droppable_warnings=("Неизвестная применимость не означает отсутствие риска.",),
         comparison_context=SafetyComparisonContext(
             reference_type="UL (верхний допустимый уровень)",
             reference_record_id=None,
