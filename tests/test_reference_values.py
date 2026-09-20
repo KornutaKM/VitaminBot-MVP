@@ -823,6 +823,7 @@ def test_runtime_binding_exposes_exact_record_source_and_version() -> None:
             "vitamin_b6",
             ReferenceType.UL,
             exposure=_total_exposure(),
+            context_revision="product:v1",
         ),
     )
     comparison = compare_amount_to_reference(
@@ -832,7 +833,6 @@ def test_runtime_binding_exposes_exact_record_source_and_version() -> None:
             unit=Unit.MILLIGRAM,
         ),
         lookup,
-        context_revision="product:v1",
     )
 
     assert comparison.record_id == "b6-ul-adult"
