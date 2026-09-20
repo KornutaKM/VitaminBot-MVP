@@ -733,7 +733,7 @@ def lookup_reference(
         return LookupResult(
             status=LookupStatus.NOT_FOUND,
             dataset_version=dataset.version,
-                context_revision=query.context_revision,
+            context_revision=query.context_revision,
             match=None,
             reasons=(),
             candidate_record_ids=(),
@@ -766,7 +766,7 @@ def lookup_reference(
         return LookupResult(
             status=LookupStatus.MATCHED,
             dataset_version=dataset.version,
-                context_revision=query.context_revision,
+            context_revision=query.context_revision,
             match=ReferenceMatch(
                 record=record,
                 source=source,
@@ -791,7 +791,7 @@ def lookup_reference(
         return LookupResult(
             status=LookupStatus.PARTIAL_COVERAGE,
             dataset_version=dataset.version,
-                context_revision=query.context_revision,
+            context_revision=query.context_revision,
             match=None,
             reasons=reasons,
             candidate_record_ids=tuple(
@@ -818,7 +818,7 @@ def lookup_reference(
         return LookupResult(
             status=LookupStatus.INDETERMINATE,
             dataset_version=dataset.version,
-                context_revision=query.context_revision,
+            context_revision=query.context_revision,
             match=None,
             reasons=reasons,
             candidate_record_ids=tuple(sorted(record.record_id for record in candidates)),
@@ -827,7 +827,7 @@ def lookup_reference(
     return LookupResult(
         status=LookupStatus.NOT_APPLICABLE,
         dataset_version=dataset.version,
-                context_revision=query.context_revision,
+        context_revision=query.context_revision,
         match=None,
         reasons=tuple(
             sorted(
