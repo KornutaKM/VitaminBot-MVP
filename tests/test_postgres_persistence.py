@@ -60,7 +60,10 @@ def test_migrations_are_reproducible_and_idempotent(
             "SELECT version, name FROM schema_migrations ORDER BY version"
         ).fetchall()
 
-    assert rows == [("0001", "initial")]
+    assert rows == [
+        ("0001", "initial"),
+        ("0002", "integrity_constraints"),
+    ]
 
 
 def test_core_constraints_preserve_domain_and_user_data_boundaries(
