@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
@@ -10,6 +11,7 @@ from uuid import UUID, uuid4
 import psycopg
 from psycopg import IsolationLevel, sql
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 
 
 class KIR122StoreError(RuntimeError):
@@ -573,6 +575,131 @@ class KIR122Store:
                 (user_id, tracked_instance_id),
             ).fetchall()
         return tuple(str(row["substance_key"]) for row in rows)
+
+    def persist_confirmed_label(
+        self,
+        user_id: UUID,
+        *,
+        idempotency_key: str,
+        candidate_id: str,
+        extraction_payload: dict[str, object],
+        provider_key: str,
+        model_revision: str,
+        adapter_revision: str,
+        prompt_revision: str,
+        schema_revision: str,
+        preprocessing_revision: str,
+        image_sha256: str,
+        raw_response_sha256: str | None,
+        requested_at: datetime,
+        completed_at: datetime,
+        confirmed_at: datetime,
+    ) -> str:
+        """Persist KIR-117 confirmed structured evidence without source pixels."""
+        with self._connect() as conn:
+            existing = conn.execute(
+                """
+                SELECT
+                    idempotency_key,
+                    user_id,
+                    candidate_id,
+                    extraction_payload,
+                    provider_key,
+                    model_revision,
+                    adapter_revision,
+                    prompt_revision,
+                    schema_revision,
+                    preprocessing_revision,
+                    image_sha256,
+                    raw_response_sha256,
+                    requested_at,
+                    completed_at,
+                    confirmed_at
+                FROM kir122_confirmed_label_records
+                WHERE idempotency_key = %s
+                FOR UPDATE
+                """,
+                (idempotency_key,),
+            ).fetchone()
+            expected = {
+                "idempotency_key": idempotency_key,
+                "user_id": user_id,
+                "candidate_id": candidate_id,
+                "extraction_payload": extraction_payload,
+                "provider_key": provider_key,
+                "model_revision": model_revision,
+                "adapter_revision": adapter_revision,
+                "prompt_revision": prompt_revision,
+                "schema_revision": schema_revision,
+                "preprocessing_revision": preprocessing_revision,
+                "image_sha256": image_sha256,
+                "raw_response_sha256": raw_response_sha256,
+                "requested_at": requested_at,
+                "completed_at": completed_at,
+                "confirmed_at": confirmed_at,
+            }
+            if existing is not None:
+                if any(existing[key] != value for key, value in expected.items()):
+                    raise KIR122StoreError("confirmed-label idempotency key collision")
+                return idempotency_key
+
+            candidate = conn.execute(
+                """
+                SELECT idempotency_key
+                FROM kir122_confirmed_label_records
+                WHERE user_id = %s
+                  AND candidate_id = %s
+                FOR UPDATE
+                """,
+                (user_id, candidate_id),
+            ).fetchone()
+            if candidate is not None:
+                raise KIR122StoreError(
+                    "confirmed label candidate already persisted under another key"
+                )
+
+            conn.execute(
+                """
+                INSERT INTO kir122_confirmed_label_records (
+                    idempotency_key,
+                    user_id,
+                    candidate_id,
+                    extraction_payload,
+                    provider_key,
+                    model_revision,
+                    adapter_revision,
+                    prompt_revision,
+                    schema_revision,
+                    preprocessing_revision,
+                    image_sha256,
+                    raw_response_sha256,
+                    requested_at,
+                    completed_at,
+                    confirmed_at
+                )
+                VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                )
+                """,
+                (
+                    idempotency_key,
+                    user_id,
+                    candidate_id,
+                    Jsonb(extraction_payload),
+                    provider_key,
+                    model_revision,
+                    adapter_revision,
+                    prompt_revision,
+                    schema_revision,
+                    preprocessing_revision,
+                    image_sha256,
+                    raw_response_sha256,
+                    requested_at,
+                    completed_at,
+                    confirmed_at,
+                ),
+            )
+        return idempotency_key
 
     def snapshot(
         self,
