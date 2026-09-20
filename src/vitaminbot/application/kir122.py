@@ -432,12 +432,14 @@ class KIR122Controller:
                     rows=((Button("Отмена", "k122cancel"),),),
                 )
             if action == "k122ok":
-                record = self._store.confirm_amount(
+                confirmed_amount = self._store.confirm_amount(
                     user_id,
                     action_key,
                     expected_session_revision=int(parts[1]),
                 )
-                supplement = self._base_store.supplement(user_id, record.tracked_instance_id)
+                supplement = self._base_store.supplement(
+                    user_id, confirmed_amount.tracked_instance_id
+                )
                 rows: list[tuple[Button, ...]] = [
                     (Button("Добавить ещё строку состава", "k122comp"),),
                 ]
@@ -460,8 +462,9 @@ class KIR122Controller:
                 return Screen(
                     text=(
                         f"Состав подтверждён\n\n"
-                        f"{self._subject_name(record.analyte_id)}: "
-                        f"{self._decimal(record.value)} {self._unit_label(record.unit)} "
+                        f"{self._subject_name(confirmed_amount.analyte_id)}: "
+                        f"{self._decimal(confirmed_amount.value)} "
+                        f"{self._unit_label(confirmed_amount.unit)} "
                         "на подтверждённую порцию этикетки.\n\n"
                         "Это запись факта с этикетки, а не вывод о безопасности "
                         "и не рекомендация по дозе."
@@ -588,8 +591,8 @@ class KIR122Controller:
             )
             per_unit: list[tuple[SnapshotAmount, NormalizationOutcome]] = []
             for source_amount in supplement.amounts:
-                amount = self._amount_record(source_amount)
-                if amount is None or source_amount.amount_basis is None:
+                amount_record = self._amount_record(source_amount)
+                if amount_record is None or source_amount.amount_basis is None:
                     continue
                 if source_amount.source_superseded_by is not None:
                     outcome = NormalizationOutcome(
@@ -598,7 +601,7 @@ class KIR122Controller:
                     )
                 else:
                     try:
-                        outcome = normalize_per_consumption_unit(amount, serving)
+                        outcome = normalize_per_consumption_unit(amount_record, serving)
                     except ValueError:
                         outcome = NormalizationOutcome(
                             status=ResolutionStatus.AMBIGUOUS,
@@ -634,19 +637,19 @@ class KIR122Controller:
                 for _, outcome in per_unit:
                     if outcome.status is not ResolutionStatus.RESOLVED or outcome.amount is None:
                         continue
-                    amount = outcome.amount
+                    computed_amount = outcome.amount
                     event_amounts.append(
                         ComputedAmount(
-                            subject_kind=amount.subject_kind,
-                            subject_id=amount.subject_id,
-                            value=amount.value * event.consumption_units,
-                            unit=amount.unit,
-                            amount_basis=amount.amount_basis,
+                            subject_kind=computed_amount.subject_kind,
+                            subject_id=computed_amount.subject_id,
+                            value=computed_amount.value * event.consumption_units,
+                            unit=computed_amount.unit,
+                            amount_basis=computed_amount.amount_basis,
                             quantity_basis=QuantityBasis.ABSOLUTE,
-                            source_quantity_basis_ids=amount.source_quantity_basis_ids,
-                            source_amount_ids=amount.source_amount_ids,
-                            source_ids=amount.source_ids,
-                            traces=amount.traces
+                            source_quantity_basis_ids=computed_amount.source_quantity_basis_ids,
+                            source_amount_ids=computed_amount.source_amount_ids,
+                            source_ids=computed_amount.source_ids,
+                            traces=computed_amount.traces
                             + (
                                 ComputationTrace(
                                     operation="kir122_event_snapshot",
@@ -656,8 +659,8 @@ class KIR122Controller:
                                     plan_version=supplement.plan_version,
                                 ),
                             ),
-                            chemical_form_id=amount.chemical_form_id,
-                            equivalence_basis=amount.equivalence_basis,
+                            chemical_form_id=computed_amount.chemical_form_id,
+                            equivalence_basis=computed_amount.equivalence_basis,
                         )
                     )
                 if not event_amounts:
