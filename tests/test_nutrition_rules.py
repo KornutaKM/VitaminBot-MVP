@@ -40,6 +40,7 @@ from vitaminbot.nutrition.rules import (
     VITAMIN_D_ANALYTE_ID,
     ZINC_ANALYTE_ID,
     AdministrationInstruction,
+    BoundDailyAggregation,
     DuplicateResultStatus,
     EventRelation,
     GlobalReason,
@@ -147,6 +148,17 @@ def _context(
         user_preferences=preferences,
         medication_context_present=medication,
         special_population_context_present=special_population,
+    )
+
+
+def _bound_aggregation(
+    aggregation: DailyAggregationResult,
+    *,
+    revision: str = "ctx:v1",
+) -> BoundDailyAggregation:
+    return BoundDailyAggregation(
+        aggregation=aggregation,
+        context_revision=revision,
     )
 
 
@@ -770,13 +782,14 @@ def test_duplicate_source_flags_remain_informational_not_safety_verdicts() -> No
 
     result = evaluate_rule_engine(
         _context(),
-        aggregation=aggregation,
+        aggregation=_bound_aggregation(aggregation),
     )
 
     assert len(result.duplicate_results) == 1
     duplicate = result.duplicate_results[0]
     assert duplicate.status is DuplicateResultStatus.INFORMATIONAL
     assert duplicate.contribution_ids == ("c1", "c2")
+    assert duplicate.context_revision == "ctx:v1"
     assert duplicate.personal_safety_conclusion_withheld is True
 
 
@@ -810,13 +823,14 @@ def test_complete_daily_aggregate_can_use_kir115_reference_api_without_dose_deri
 
     result = evaluate_rule_engine(
         _context(),
-        aggregation=aggregation,
+        aggregation=_bound_aggregation(aggregation),
         reference_requests=(request,),
     )
 
     assert len(result.reference_results) == 1
     evaluated = result.reference_results[0]
     assert evaluated.status is ReferenceEvaluationStatus.EVALUATED
+    assert evaluated.context_revision == "ctx:v1"
     assert evaluated.comparison is not None
     assert evaluated.comparison.relation is ComparisonRelation.BELOW
     assert evaluated.personal_safety_conclusion_withheld is True
@@ -854,7 +868,7 @@ def test_incomplete_daily_aggregate_is_not_silently_compared_as_confirmed_total(
 
     result = evaluate_rule_engine(
         _context(),
-        aggregation=aggregation,
+        aggregation=_bound_aggregation(aggregation),
         reference_requests=(request,),
     )
 
@@ -894,8 +908,63 @@ def test_reference_query_cannot_be_rebound_to_another_rule_context_revision() ->
     with pytest.raises(RuleDataError, match="reference query revision"):
         evaluate_rule_engine(
             _context(),
-            aggregation=aggregation,
+            aggregation=_bound_aggregation(aggregation),
             reference_requests=(request,),
+        )
+
+
+def test_stale_aggregation_cannot_be_rebound_for_reference_comparison() -> None:
+    aggregate = _daily_aggregate(
+        subject_id="analyte:selenium",
+        value="200",
+        unit=Unit.MICROGRAM,
+    )
+    aggregation = DailyAggregationResult(
+        aggregates=(aggregate,),
+        unresolved_contributors=(),
+        duplicate_flags=(),
+    )
+    request = ReferenceComparisonRequest(
+        request_id="selenium-ul-v2",
+        aggregate_key=aggregate.key,
+        query=ReferenceQuery(
+            substance_key="selenium",
+            reference_type=ReferenceType.UL,
+            profile=PopulationProfile(
+                age_months=360,
+                sex=SexApplicability.FEMALE,
+                life_stage=LifeStage.GENERAL,
+            ),
+            exposure=ExposureContext(exposure_basis=ExposureBasis.TOTAL_INTAKE),
+            context_revision="ctx:v2",
+        ),
+    )
+
+    with pytest.raises(RuleDataError, match="daily aggregation revision"):
+        evaluate_rule_engine(
+            _context(revision="ctx:v2"),
+            aggregation=_bound_aggregation(aggregation, revision="ctx:v1"),
+            reference_requests=(request,),
+        )
+
+
+def test_stale_aggregation_cannot_be_rebound_for_duplicate_source_output() -> None:
+    aggregation = DailyAggregationResult(
+        aggregates=(),
+        unresolved_contributors=(),
+        duplicate_flags=(
+            DuplicateFlag(
+                kind=DuplicateFlagKind.SHARED_SOURCE_LINEAGE,
+                contribution_ids=("c1", "c2"),
+                shared_source_ids=("label:v1",),
+            ),
+        ),
+    )
+
+    with pytest.raises(RuleDataError, match="daily aggregation revision"):
+        evaluate_rule_engine(
+            _context(revision="ctx:v2"),
+            aggregation=_bound_aggregation(aggregation, revision="ctx:v1"),
         )
 
 

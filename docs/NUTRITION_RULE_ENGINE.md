@@ -137,16 +137,24 @@ Both retain source keys and a semantic role. The calcium value is explicitly mar
 ## Aggregation and duplicate-source output
 
 KIR-119 consumes KIR-114 `DailyAggregationResult` without changing KIR-114 semantics.
+The value must enter KIR-119 through immutable `BoundDailyAggregation`, which carries the exact
+`context_revision` of the product/form/serving/plan state used to compute it. Evaluation rejects
+the aggregation before any duplicate or reference output is produced when that revision differs
+from `RuleEvaluationContext.context_revision`; an old aggregate is never relabelled as current.
 
-Duplicate flags are surfaced as `DuplicateSourceResult` with informational status only.
-They do not become a safety verdict and do not authorize discarding distinct contributions.
+Duplicate flags are surfaced as `DuplicateSourceResult` with informational status only. Their
+revision is copied from the already-validated aggregation binding rather than stamped from an
+unverified caller context. They do not become a safety verdict and do not authorize discarding
+distinct contributions.
 
 Partially unresolved daily aggregates are never compared as confirmed totals.
 
 ## Reference comparison output
 
 Reference requests select an exact KIR-114 `AggregateKey` and carry a KIR-115
-`ReferenceQuery` bound to the same context revision.
+`ReferenceQuery` bound to the same context revision. The query revision and the immutable
+aggregation binding must both match the rule-evaluation context; stale v1 aggregates cannot be
+reused or rebound during a v2 evaluation.
 
 For a complete aggregate, KIR-119 reconstructs a provenance-preserving `PER_DAY`
 `ComputedAmount` and calls the accepted KIR-115 lookup/comparison API.

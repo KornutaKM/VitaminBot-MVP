@@ -546,6 +546,16 @@ class DuplicateSourceResult:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class BoundDailyAggregation:
+    aggregation: DailyAggregationResult
+    context_revision: str
+
+    def __post_init__(self) -> None:
+        if not self.context_revision.strip():
+            raise RuleDataError("aggregation context_revision must not be blank")
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class ReferenceComparisonRequest:
     request_id: str
     aggregate_key: AggregateKey
@@ -1625,11 +1635,12 @@ def _evaluate_scheduling(
 
 
 def _duplicate_results(
-    aggregation: DailyAggregationResult | None,
-    context_revision: str,
+    aggregation: BoundDailyAggregation | None,
 ) -> tuple[DuplicateSourceResult, ...]:
     if aggregation is None:
         return ()
+    aggregation_result = aggregation.aggregation
+    context_revision = aggregation.context_revision
     results = tuple(
         DuplicateSourceResult(
             status=DuplicateResultStatus.INFORMATIONAL,
@@ -1640,7 +1651,7 @@ def _duplicate_results(
             shared_source_ids=tuple(sorted(flag.shared_source_ids)),
             context_revision=context_revision,
         )
-        for flag in aggregation.duplicate_flags
+        for flag in aggregation_result.duplicate_flags
     )
     return tuple(
         sorted(
@@ -1713,16 +1724,17 @@ def _aggregate_amount(aggregate: DailyAggregate) -> ComputedAmount:
 
 def _reference_results(
     *,
-    aggregation: DailyAggregationResult | None,
+    aggregation: BoundDailyAggregation | None,
     requests: tuple[ReferenceComparisonRequest, ...],
     dataset: ReferenceDataset,
-    context_revision: str,
 ) -> tuple[ReferenceRuleResult, ...]:
     if not requests:
         return ()
     if aggregation is None:
-        raise RuleDataError("reference requests require a DailyAggregationResult")
+        raise RuleDataError("reference requests require a BoundDailyAggregation")
 
+    aggregation_result = aggregation.aggregation
+    context_revision = aggregation.context_revision
     results: list[ReferenceRuleResult] = []
     for request in sorted(requests, key=lambda candidate: candidate.request_id):
         if request.query.context_revision != context_revision:
@@ -1731,7 +1743,7 @@ def _reference_results(
             )
         matches = tuple(
             aggregate
-            for aggregate in aggregation.aggregates
+            for aggregate in aggregation_result.aggregates
             if aggregate.key == request.aggregate_key
         )
         if not matches:
@@ -1784,11 +1796,16 @@ def _reference_results(
 def evaluate_rule_engine(
     context: RuleEvaluationContext,
     *,
-    aggregation: DailyAggregationResult | None = None,
+    aggregation: BoundDailyAggregation | None = None,
     reference_requests: tuple[ReferenceComparisonRequest, ...] = (),
     reference_dataset: ReferenceDataset = EU_EFSA_REFERENCE_DATASET,
     ruleset: RuleSet = DEFAULT_RULESET,
 ) -> RuleEngineResult:
+    if aggregation is not None and aggregation.context_revision != context.context_revision:
+        raise RuleDataError(
+            "daily aggregation revision differs from evaluation context revision"
+        )
+
     global_reasons: list[GlobalReason] = []
     if context.medication_context_present:
         global_reasons.append(GlobalReason.MEDICATION_CONTEXT_UNVALIDATED)
@@ -1809,12 +1826,11 @@ def evaluate_rule_engine(
         global_status=global_status,
         global_reasons=tuple(sorted(global_reasons, key=lambda reason: reason.value)),
         scheduling_results=scheduling_results,
-        duplicate_results=_duplicate_results(aggregation, context.context_revision),
+        duplicate_results=_duplicate_results(aggregation),
         reference_results=_reference_results(
             aggregation=aggregation,
             requests=reference_requests,
             dataset=reference_dataset,
-            context_revision=context.context_revision,
         ),
         user_preferences=tuple(
             sorted(context.user_preferences, key=lambda preference: preference.preference_id)
