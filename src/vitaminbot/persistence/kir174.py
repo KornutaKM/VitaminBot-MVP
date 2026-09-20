@@ -216,6 +216,13 @@ class KIR174Store:
                 expected_profile_revision=int(row["expected_profile_revision"]),
             )
 
+    def cancel_age_input(self, user_id: UUID) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM applicability_input_sessions WHERE user_id = %s",
+                (user_id,),
+            )
+
     def save_age(
         self,
         user_id: UUID,
