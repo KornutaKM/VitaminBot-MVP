@@ -321,7 +321,8 @@ class KIR122Controller:
 
     def safety_envelopes(self, telegram_user_id: int) -> tuple[SafetyEnvelope, ...]:
         user_id = self._base_store.ensure_user(telegram_user_id)
-        return self._reference_envelopes(self._build_view(user_id))
+        view = self._build_view(user_id)
+        return self._reference_envelopes(view) + (self._scope_envelope(view),)
 
     def safety(self, telegram_user_id: int) -> Screen:
         user_id = self._base_store.ensure_user(telegram_user_id)
@@ -745,6 +746,57 @@ class KIR122Controller:
             )
         except ValueError:
             return None
+
+    @staticmethod
+    def _scope_envelope(view: VerticalView) -> SafetyEnvelope:
+        return SafetyEnvelope(
+            subject_name="Границы персональной оценки",
+            status=SafetyStatus.CANNOT_ASSESS,
+            classification="personal_safety_scope",
+            known_facts=(
+                SafetyFact(
+                    key="covered_scope",
+                    value=(
+                        "Этот экран показывает только подтверждённые факты состава, "
+                        "агрегацию и применимые справочные сравнения."
+                    ),
+                ),
+            ),
+            unknown_or_ambiguous=(
+                SafetyFact(
+                    key="medication_interactions",
+                    value=(
+                        "Лекарственные взаимодействия не проверяются этим MVP-экраном "
+                        "без отдельного подтверждённого источника и контекста."
+                    ),
+                ),
+                SafetyFact(
+                    key="special_population_context",
+                    value=(
+                        "Беременность/лактация, детский возраст и болезни почек/печени "
+                        "не предполагаются и не выводятся автоматически."
+                    ),
+                ),
+            ),
+            withheld_conclusion=(
+                "Персональный вывод о безопасности всей схемы добавок не сделан."
+            ),
+            provenance=(),
+            resolution_path=(
+                "Для персонального вывода нужен отдельно подтверждённый применимый "
+                "контекст и принятые источники; отсутствующие данные не подставляются."
+            ),
+            escalation_path=None,
+            non_droppable_warnings=(
+                "Отсутствие справочного сигнала не означает совместимость "
+                "или безопасность всей схемы.",
+                "Отсутствие данных о взаимодействии не означает отсутствие взаимодействия.",
+            ),
+            comparison_context=None,
+            contributors=(),
+            evidence_state=SafetyEvidenceState.MISSING,
+            context_revision=view.snapshot.context_revision,
+        )
 
     def _reference_envelopes(self, view: VerticalView) -> tuple[SafetyEnvelope, ...]:
         rows: list[SafetyEnvelope] = []
