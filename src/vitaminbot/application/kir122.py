@@ -353,10 +353,7 @@ class KIR122Controller:
         session = self._store.session(user_id)
         if session is None or session.state != "amount_input":
             return Screen(
-                text=(
-                    "Сейчас я не жду значение состава. "
-                    "Откройте «Состав» и выберите нутриент."
-                )
+                text=("Сейчас я не жду значение состава. Откройте «Состав» и выберите нутриент.")
             )
 
         parsed = self._parse_amount(text)
@@ -527,8 +524,7 @@ class KIR122Controller:
             )
         token = self._token(record.instance_id)
         rows = tuple(
-            (Button(name, f"k122n:{token}:{record.revision}:{key}"),)
-            for key, name, _ in options
+            (Button(name, f"k122n:{token}:{record.revision}:{key}"),) for key, name, _ in options
         )
         return Screen(
             text=(
@@ -778,9 +774,7 @@ class KIR122Controller:
                     ),
                 ),
             ),
-            withheld_conclusion=(
-                "Персональный вывод о безопасности всей схемы добавок не сделан."
-            ),
+            withheld_conclusion=("Персональный вывод о безопасности всей схемы добавок не сделан."),
             provenance=(),
             resolution_path=(
                 "Для персонального вывода нужен отдельно подтверждённый применимый "
@@ -1037,9 +1031,7 @@ class KIR122Controller:
                                     value="Сопоставление не удалось выполнить однозначно.",
                                 ),
                             ),
-                            withheld_conclusion=(
-                                "Персональный вывод о безопасности не сделан."
-                            ),
+                            withheld_conclusion=("Персональный вывод о безопасности не сделан."),
                             provenance=provenance,
                             resolution_path=(
                                 "Нужно устранить несовместимость основы, единицы "
@@ -1048,7 +1040,7 @@ class KIR122Controller:
                             escalation_path=None,
                             non_droppable_warnings=(
                                 "Неоднозначное сопоставление не является "
-                            "отрицательным результатом.",
+                                "отрицательным результатом.",
                             ),
                             comparison_context=comparison_context,
                             contributors=contributors,
@@ -1089,8 +1081,7 @@ class KIR122Controller:
                     if relation == "above":
                         status = SafetyStatus.CAUTION
                         withheld = (
-                            "Сопоставление с SAFE_LEVEL не превращено в UL "
-                            "или диагноз токсичности."
+                            "Сопоставление с SAFE_LEVEL не превращено в UL или диагноз токсичности."
                         )
 
                 rows.append(
@@ -1290,8 +1281,7 @@ class KIR122Controller:
             ids = {
                 record.subject_id
                 for record in EU_EFSA_REFERENCE_DATASET.records
-                if record.lifecycle is ReferenceLifecycle.ACTIVE
-                and record.substance_key == key
+                if record.lifecycle is ReferenceLifecycle.ACTIVE and record.substance_key == key
             }
             if subject_id in ids:
                 return name
@@ -1341,8 +1331,7 @@ class KIR122Controller:
                 "Это предпочтение, а не медицинская необходимость."
             ),
             RuleWarning.NO_RULE_NOT_SAFETY_CLEARANCE: (
-                "Отсутствие поддерживаемого правила не подтверждает совместимость "
-                "или безопасность."
+                "Отсутствие поддерживаемого правила не подтверждает совместимость или безопасность."
             ),
             RuleWarning.NULL_GAP_MUST_REMAIN_NULL: (
                 "Точный интервал не установлен и не должен быть придуман."
