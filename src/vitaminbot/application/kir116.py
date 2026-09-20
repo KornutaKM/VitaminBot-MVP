@@ -92,10 +92,13 @@ class KIR116Controller:
         return Screen(
             text=(
                 "Add a supplement\n\n"
-                "Manual entry is available in this version. "
-                "Photo and barcode options are not shown until their implementation is ready."
+                "Choose photo or manual entry. Photo processing fails closed to manual entry "
+                "until an authorized production recognition provider is configured."
             ),
-            rows=((Button("Enter manually", "m"),),),
+            rows=(
+                (Button("📷 Photo label", "k122photo"),),
+                (Button("Enter manually", "m"),),
+            ),
         )
 
     def supplements(self, telegram_user_id: int) -> Screen:
@@ -596,6 +599,12 @@ class KIR116Controller:
             ),
             rows=(
                 (Button("Add / edit plan", KIR116Controller._supplement_callback("p", record)),),
+                (
+                    Button(
+                        "Composition / totals",
+                        KIR116Controller._supplement_callback("k122", record),
+                    ),
+                ),
                 (
                     Button("Edit name", KIR116Controller._supplement_callback("en", record)),
                     Button("Edit serving", KIR116Controller._supplement_callback("es", record)),
