@@ -33,7 +33,6 @@ from vitaminbot.domain import (
     unit_dimension,
 )
 
-
 SOURCE_ID = "label:example:v1"
 PORTION_ID = "basis:portion"
 CAPSULE_ID = "consumption-unit:capsule"
