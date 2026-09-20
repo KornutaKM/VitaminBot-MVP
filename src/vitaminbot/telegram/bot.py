@@ -148,6 +148,11 @@ async def _profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if telegram_user_id is None:
         return
     screen = await asyncio.to_thread(_controller(context).profile, telegram_user_id)
+    if _applicability_controller(context) is not None:
+        screen = Screen(
+            text=screen.text,
+            rows=screen.rows + ((Button("Контекст применимости", "k174profile"),),),
+        )
     await _reply(update, _operational_screen(context, screen))
 
 
@@ -208,6 +213,22 @@ async def _cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     telegram_user_id = _telegram_user_id(update)
     if telegram_user_id is None:
         return
+    applicability_controller = _applicability_controller(context)
+    if applicability_controller is not None:
+        waiting = await asyncio.to_thread(
+            applicability_controller.has_pending_text,
+            telegram_user_id,
+        )
+        if waiting:
+            screen = await asyncio.to_thread(
+                applicability_controller.callback,
+                telegram_user_id,
+                "k174skip",
+                action_key="cmd:cancel:applicability",
+            )
+            await _reply(update, screen)
+            return
+
     vertical_controller = _vertical_controller(context)
     if vertical_controller is not None:
         waiting = await asyncio.to_thread(
