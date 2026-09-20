@@ -46,6 +46,8 @@ jobs:
     name: Windows — compatibility
     runs-on: [self-hosted, Windows, X64, vitaminbot]
     timeout-minutes: 10
+    env:
+      PSExecutionPolicyPreference: Bypass
 
     steps:
       - name: Check out repository
