@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
@@ -26,6 +27,7 @@ from vitaminbot.recognition.contract import (
     SourceKind,
 )
 
+CANDIDATE_IDENTITY_VERSION: Final = "photo-candidate-v1"
 DEFAULT_TRANSIENT_IMAGE_TTL: Final = timedelta(minutes=30)
 SUPPORTED_IMAGE_MEDIA_TYPES: Final[frozenset[str]] = frozenset(
     {"image/jpeg", "image/png", "image/webp"}
@@ -142,9 +144,13 @@ class PhotoCapture:
 
 @dataclass(frozen=True, slots=True)
 class PhotoExtractionCandidate:
+    candidate_id: str
     capture: PhotoCapture
     extraction: LabelExtraction
     provenance: ExtractionProvenance
+
+    def __post_init__(self) -> None:
+        _require_candidate_id(self.candidate_id)
 
 
 @dataclass(frozen=True, slots=True)
@@ -181,12 +187,14 @@ class FieldDecision:
 
 @dataclass(frozen=True, slots=True)
 class ConfirmationRequest:
+    expected_candidate_id: str
     expected_revision: int
     displayed_field_ids: tuple[str, ...]
     decisions: tuple[FieldDecision, ...]
     confirmed_at: datetime
 
     def __post_init__(self) -> None:
+        _require_candidate_id(self.expected_candidate_id)
         if self.expected_revision < 0:
             raise StaleConfirmationError("expected_revision must be non-negative")
         _require_aware(self.confirmed_at, "confirmed_at")
@@ -199,12 +207,14 @@ class ConfirmationRequest:
 
 @dataclass(frozen=True, slots=True)
 class ConfirmedLabelRecord:
+    candidate_id: str
     extraction: LabelExtraction
     provenance: ExtractionProvenance
     confirmed_at: datetime
     idempotency_key: str
 
     def __post_init__(self) -> None:
+        _require_candidate_id(self.candidate_id)
         if self.extraction.record_state is not RecordState.ACCEPTED_FOR_STORAGE:
             raise PhotoPipelineError("only accepted_for_storage extraction may be persisted")
         _require_aware(self.confirmed_at, "confirmed_at")
@@ -270,6 +280,37 @@ def _require_aware(value: datetime, field_name: str) -> None:
 def _require_sha256(value: str, field_name: str) -> None:
     if len(value) != 64 or any(char not in "0123456789abcdef" for char in value.lower()):
         raise PhotoPipelineError(f"{field_name} must be a hexadecimal SHA-256 digest")
+
+
+def _require_candidate_id(value: str) -> None:
+    prefix = f"{CANDIDATE_IDENTITY_VERSION}:"
+    if not value.startswith(prefix):
+        raise PhotoPipelineError("candidate_id has unsupported identity version")
+    _require_sha256(value.removeprefix(prefix), "candidate_id digest")
+
+
+def _candidate_identity(
+    *,
+    capture: PhotoCapture,
+    extraction: LabelExtraction,
+) -> str:
+    candidate_payload = extraction.to_payload()
+    candidate_payload.pop("extraction_id", None)
+    canonical = json.dumps(
+        {
+            "identity_version": CANDIDATE_IDENTITY_VERSION,
+            "capture_id": capture.capture_id,
+            "source_image": {
+                "asset_id": capture.image.asset_id,
+                "sha256": capture.image.sha256_hex,
+            },
+            "candidate": candidate_payload,
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return f"{CANDIDATE_IDENTITY_VERSION}:{sha256(canonical).hexdigest()}"
 
 
 class InMemoryTransientImageStore:
@@ -619,6 +660,7 @@ class PhotoRecognitionPipeline:
             raw_response_sha256=result.raw_response_sha256,
         )
         return PhotoExtractionCandidate(
+            candidate_id=_candidate_identity(capture=capture, extraction=extraction),
             capture=capture,
             extraction=extraction,
             provenance=provenance,
@@ -629,6 +671,17 @@ class PhotoRecognitionPipeline:
         candidate: PhotoExtractionCandidate,
         request: ConfirmationRequest,
     ) -> ConfirmedLabelRecord | RejectedPhotoCapture | ManualEntryFallback:
+        expected_candidate_id = _candidate_identity(
+            capture=candidate.capture,
+            extraction=candidate.extraction,
+        )
+        if candidate.candidate_id != expected_candidate_id:
+            raise ProviderContractError("candidate identity does not match capture/extraction payload")
+        if request.expected_candidate_id != candidate.candidate_id:
+            raise StaleConfirmationError(
+                "confirmation candidate identity does not match current extraction candidate"
+            )
+
         try:
             self._image_store.read(candidate.capture.image)
         except TransientImageExpiredError:
@@ -688,10 +741,13 @@ class PhotoRecognitionPipeline:
             confirmation_revision=extraction.confirmation_revision + 1,
         )
         record = ConfirmedLabelRecord(
+            candidate_id=candidate.candidate_id,
             extraction=accepted,
             provenance=candidate.provenance,
             confirmed_at=request.confirmed_at,
-            idempotency_key=(f"{accepted.extraction_id}:{accepted.confirmation_revision}"),
+            idempotency_key=(
+                f"{candidate.candidate_id}:confirmation:{accepted.confirmation_revision}"
+            ),
         )
         self._sink.persist(record)
         self._image_store.delete(candidate.capture.image)
