@@ -523,12 +523,12 @@ class KIR122Store:
             conn.execute(
                 """
                 INSERT INTO product_amounts (
-                    amount_id, formulation_id, subject_kind, subject_id, source_id,
+                    amount_id, formulation_id, subject_kind, analyte_id, ingredient_id, source_id,
                     resolution_status, evidence_status, value, unit, amount_basis,
                     quantity_basis, quantity_basis_id, equivalence_basis, raw_text
                 )
                 VALUES (
-                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s,
                     'resolved', 'declared', %s, %s, %s,
                     'per_label_portion', %s, %s, %s
                 )
@@ -537,7 +537,8 @@ class KIR122Store:
                     amount_id,
                     str(supplement[0]["formulation_id"]),
                     session.subject_kind.value,
-                    session.subject_id,
+                    session.subject_id if session.subject_kind is SubjectKind.ANALYTE else None,
+                    session.subject_id if session.subject_kind is SubjectKind.INGREDIENT else None,
                     source_ids[0],
                     session.pending_value,
                     session.pending_unit.value,
@@ -613,7 +614,8 @@ class KIR122Store:
                 amounts = conn.execute(
                     """
                     SELECT
-                        us.instance_id, pa.amount_id, pa.subject_kind, pa.subject_id,
+                        us.instance_id, pa.amount_id, pa.subject_kind,
+                        COALESCE(pa.analyte_id, pa.ingredient_id) AS subject_id,
                         pa.source_id, pa.resolution_status, pa.evidence_status, pa.value,
                         pa.unit, pa.amount_basis, pa.quantity_basis, pa.quantity_basis_id,
                         pa.equivalence_basis, pa.raw_text,
