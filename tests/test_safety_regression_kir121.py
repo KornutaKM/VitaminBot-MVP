@@ -792,9 +792,7 @@ def _presentation_payload(result: SchedulingRuleResult) -> dict[str, object]:
         "decision_class": result.decision_class.value,
         "minimum_gap_minutes": result.minimum_gap_minutes,
         "clock_time_preference": (
-            result.clock_time_preference.value
-            if result.clock_time_preference is not None
-            else None
+            result.clock_time_preference.value if result.clock_time_preference is not None else None
         ),
         "compatibility_claim": False,
         "personal_safety_clearance": False,
@@ -831,8 +829,9 @@ def _assert_non_strengthening_presentation(
         assert payload["mandatory"] is False
 
 
-def test_bound_daily_aggregation_cannot_cross_snapshot_revision_for_reference_or_duplicate(
-) -> None:
+def test_bound_daily_aggregation_cannot_cross_snapshot_revision_for_reference_or_duplicate() -> (
+    None
+):
     original = _contribution(
         "selenium:original",
         "instance:selenium",
@@ -1081,10 +1080,7 @@ def test_vitamin_d_fat_meal_rule_is_soft_and_has_no_clock_time_requirement() -> 
     )
 
     assert matched.decision_class is RuleDecisionClass.PREFERENCE
-    assert (
-        matched.meal_context_preference
-        is MealContextPreference.MEAL_OR_SNACK_WITH_SOME_FAT
-    )
+    assert matched.meal_context_preference is MealContextPreference.MEAL_OR_SNACK_WITH_SOME_FAT
     assert matched.preferred_slot_ids == ("meal:with-fat",)
     assert matched.clock_time_preference is None
     assert matched.minimum_gap_minutes is None
