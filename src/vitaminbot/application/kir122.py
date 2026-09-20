@@ -55,6 +55,7 @@ from vitaminbot.nutrition import (
     RuleEvaluationContext,
     RuleStatus,
     RuleType,
+    RuleWarning,
     SchedulingItem,
     UnresolvedReason,
     aggregate_daily_contributions,
@@ -297,6 +298,8 @@ class KIR122Controller:
                         f"• {label}: более приоритетный подтверждённый контекст не позволяет "
                         "автоматически применить это предпочтение."
                     )
+                for warning in rule.warnings:
+                    lines.append(f"  Важно: {self._rule_warning_text(warning)}")
 
         lines.extend(
             [
@@ -1277,6 +1280,36 @@ class KIR122Controller:
     def _unit_label(unit: object) -> str:
         raw = unit.value if isinstance(unit, Unit) else str(unit)
         return _RU_UNIT.get(raw, raw)
+
+    @staticmethod
+    def _rule_warning_text(warning: RuleWarning) -> str:
+        return {
+            RuleWarning.PREFERENCE_NOT_MEDICAL_NECESSITY: (
+                "Это предпочтение, а не медицинская необходимость."
+            ),
+            RuleWarning.NO_RULE_NOT_SAFETY_CLEARANCE: (
+                "Отсутствие поддерживаемого правила не подтверждает совместимость "
+                "или безопасность."
+            ),
+            RuleWarning.NULL_GAP_MUST_REMAIN_NULL: (
+                "Точный интервал не установлен и не должен быть придуман."
+            ),
+            RuleWarning.NO_PERSONALIZED_DOSE: (
+                "Правило не создаёт и не изменяет персональную дозу."
+            ),
+            RuleWarning.FIXED_COMBINATION_NOT_SPLITTABLE: (
+                "Неделимая комбинация не должна автоматически разноситься по компонентам."
+            ),
+            RuleWarning.USER_PREFERENCE_NOT_SCIENTIFIC_EVIDENCE: (
+                "Пользовательская настройка времени не является научным доказательством."
+            ),
+            RuleWarning.MEDICATION_NO_RESULT_NOT_NO_INTERACTION: (
+                "Отсутствие результата по взаимодействию не означает отсутствие взаимодействия."
+            ),
+            RuleWarning.LLM_MUST_NOT_STRENGTHEN: (
+                "Пояснение не должно усиливать вывод сверх подтверждённого правила."
+            ),
+        }[warning]
 
     @staticmethod
     def _reference_label(reference_type: ReferenceType) -> str:
