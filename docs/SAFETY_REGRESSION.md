@@ -31,7 +31,15 @@ The dedicated suite covers, at minimum:
 - calcium split-event preference rearranging only existing schedulable units;
 - high-risk medication context withholding generic scheduling;
 - user routine preference remaining user provenance, not scientific provenance;
-- stale scheduling results after context revision changes.
+- stale scheduling results after context revision changes;
+- immutable BoundDailyAggregation snapshot binding across duplicate/reference evaluation;
+- KIR-115 comparison invalidation on context and dataset/source revision changes;
+- product/clinician/user-instruction precedence over generic scheduling preferences;
+- positive Vitamin D meal-fat preference remaining soft and clock-time unconstrained;
+- calcium split-event conservation of confirmed total amount and unit count;
+- null separation-gap preservation through deterministic serialization;
+- NO_SUPPORTED_RULE_FOUND / INSUFFICIENT_EVIDENCE remaining non-clearance states at presentation boundaries;
+- deterministic presentation/localization guards that reject strengthening of preference, indeterminate, and null-gap states.
 
 ## Independence rule
 
@@ -73,10 +81,16 @@ This initial suite validates the currently implemented deterministic normalizati
 It does not claim complete validation of:
 
 - future medication-interaction databases;
-- future LLM/localization rendering implementations;
+- future real LLM/localization implementations beyond the deterministic non-strengthening boundary exercised here;
 - future OCR provider behavior beyond the canonical confirmed-data boundary;
 - future emergency/acute-symptom routing;
 - reference substances or rules not present in the accepted MVP contracts;
 - full end-to-end Telegram presentation, which requires downstream integration validation.
+
+The current suite does, however, lock the structured presentation invariants required by KIR-121:
+null gaps remain null through serialization; no-rule/insufficient-evidence states cannot become
+compatibility or safety clearance; scientific preferences cannot become mandatory or gain invented
+clock-time semantics. Future LLM/localization layers must satisfy the same invariants rather than
+redefining them.
 
 Those paths remain subject to their own ENG4 contracts and must fail closed until independently covered.
