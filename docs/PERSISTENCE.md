@@ -51,3 +51,10 @@ Before tests, the workflow verifies service readiness, peer identity, expected r
 Individual persistence tests also use unique schemas and drop them in fixture cleanup. The per-run disposable database provides an outer isolation boundary if a test process fails.
 
 The Windows compatibility lane remains non-blocking under the accepted KIR-123 least-privilege deferral.
+
+## Transactional aggregate invariants
+
+KIR-109 requires several aggregates to remain non-empty at commit: each formulation has provenance, each derived amount has input lineage, and each candidate resolution retains candidates. Deferred PostgreSQL constraint triggers enforce these invariants while still allowing parent and child rows to be created atomically in one transaction.
+
+Intake plans and consumed events persist the tracked formulation as an integrity key. Composite foreign keys reject consumption units from another formulation. Correction lineage is also constrained to the same tracked supplement instance, preventing cross-instance and cross-user correction links.
+
