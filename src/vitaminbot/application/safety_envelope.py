@@ -188,9 +188,7 @@ def render_safety_envelopes(envelopes: tuple[SafetyEnvelope, ...]) -> str:
 
         if envelope.unknown_or_ambiguous:
             lines.append("Неизвестно / неоднозначно:")
-            lines.extend(
-                f"• {fact.value}" for fact in envelope.unknown_or_ambiguous
-            )
+            lines.extend(f"• {fact.value}" for fact in envelope.unknown_or_ambiguous)
 
         if envelope.known_facts:
             lines.append("Подтверждено:")
