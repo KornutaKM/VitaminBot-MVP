@@ -19,9 +19,11 @@ def test_packaged_migration_discovery_finds_initial_sql() -> None:
     assert [(migration.version, migration.name) for migration in migrations] == [
         ("0001", "initial"),
         ("0002", "integrity_constraints"),
+        ("0003", "bot_manual_entry"),
     ]
     assert "CREATE TABLE" in migrations[0].sql
     assert "ALTER TABLE" in migrations[1].sql
+    assert "CREATE TABLE" in migrations[2].sql
 
 
 @pytest.fixture
@@ -63,6 +65,7 @@ def test_migrations_are_reproducible_and_idempotent(
     assert rows == [
         ("0001", "initial"),
         ("0002", "integrity_constraints"),
+        ("0003", "bot_manual_entry"),
     ]
 
 
