@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import re
 from dataclasses import dataclass
 from decimal import Decimal
 from fractions import Fraction
@@ -644,7 +645,7 @@ class KIR122Controller:
 
             parts = data.split(":")
             action = parts[0]
-            if action == "k122a":
+            if action in {"k122", "k122a"}:
                 instance_id = _decode_instance(parts[1])
                 expected_revision = int(parts[2])
                 self._store.begin_nutrient_entry(
@@ -809,6 +810,8 @@ def _encode_instance(instance_id: str) -> str:
 
 
 def _decode_instance(token: str) -> str:
+    if re.fullmatch(r"[0-9a-f]{16}", token):
+        return f"instance:manual:{token}"
     padding = "=" * (-len(token) % 4)
     raw = base64.urlsafe_b64decode((token + padding).encode("ascii")).decode("utf-8")
     if not raw or len(raw) > 120:
