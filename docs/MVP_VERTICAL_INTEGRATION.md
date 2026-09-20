@@ -60,6 +60,19 @@ replacement.
 KIR-122 reads KIR-115 values at runtime. The Russian presentation does not duplicate numeric
 UL, SAFE_LEVEL, or other scientific constants.
 
+Safety-significant state follows the accepted KIR-129 contract and exists as structured data
+before rendering. Each envelope preserves status, classification, known facts,
+unknown/ambiguous facts, withheld conclusion, provenance, resolution path, optional
+escalation path, non-droppable warnings, comparison context, contributors, evidence state,
+and the exact KIR-122 context revision. Fail-closed envelopes cannot be constructed without a
+withheld conclusion, resolution path, and non-droppable warning.
+
+The screen also carries an explicit CANNOT_ASSESS scope envelope: medication interactions and
+special-population applicability are not silently treated as absent merely because the
+privacy-minimized MVP profile does not collect them speculatively. This does not add new
+medical-profile collection; it prevents the reference screen from becoming implicit
+personal safety clearance.
+
 The UI preserves these distinctions:
 
 - unknown applicability is not replaced by an adult default;
