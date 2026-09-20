@@ -111,9 +111,7 @@ def _candidate(
     provider_key: str = "mock",
     identifier: str = GTIN,
     name: str = "Example Magnesium",
-    freshness: FreshnessState = (
-        FreshnessState.PROVIDER_TIMESTAMP_CURRENT_UNKNOWN_SEMANTICS
-    ),
+    freshness: FreshnessState = (FreshnessState.PROVIDER_TIMESTAMP_CURRENT_UNKNOWN_SEMANTICS),
     flags: tuple[str, ...] = (),
     record_id: str = "record-1",
 ) -> CatalogCandidate:
@@ -218,10 +216,7 @@ def test_invalid_gtin_fails_closed_without_calling_provider() -> None:
 
 
 def test_gs1_digital_link_preserves_uri_primary_key_and_qualifiers() -> None:
-    raw = (
-        "https://id.gs1.org/01/09506000134352/10/LOT-7"
-        "?21=SERIAL-9&17=271231"
-    )
+    raw = "https://id.gs1.org/01/09506000134352/10/LOT-7?21=SERIAL-9&17=271231"
     request = _request(raw_scan=raw, scan_kind=ScanKind.QR)
 
     assert request.identifier_type is IdentifierType.GS1_DIGITAL_LINK
@@ -358,9 +353,7 @@ def test_confirmed_current_label_wins_conflict_without_overwriting_catalog_candi
     assert outcome.discovery_state is DiscoveryState.CATALOG_LABEL_CONFLICT
     assert outcome.recommended_action is RecommendedAction.PHOTO_OR_MANUAL
     discovered = outcome.candidates[0].candidate
-    product_name = next(
-        field for field in discovered.fields if field.field_name == "product_name"
-    )
+    product_name = next(field for field in discovered.fields if field.field_name == "product_name")
     assert product_name.raw_value == "Old Package Name"
     assert CATALOG_LABEL_CONFLICT in product_name.conflicts
     assert CATALOG_LABEL_CONFLICT in discovered.candidate_conflicts
@@ -426,9 +419,7 @@ def test_provider_outage_without_candidate_degrades_to_photo_or_manual() -> None
     outcome = service.discover(_request())
 
     assert outcome.discovery_state is DiscoveryState.LOOKUP_DEGRADED
-    assert outcome.provider_results[0].result_state is (
-        ProviderResultState.PROVIDER_UNAVAILABLE
-    )
+    assert outcome.provider_results[0].result_state is (ProviderResultState.PROVIDER_UNAVAILABLE)
     assert outcome.provider_results[0].provider_error == "provider timeout"
     assert outcome.recommended_action is RecommendedAction.PHOTO_OR_MANUAL
 
@@ -453,9 +444,7 @@ def test_field_level_provenance_and_image_rights_are_preserved() -> None:
 
     result = outcome.provider_results[0]
     candidate = outcome.candidates[0].candidate
-    product_name = next(
-        field for field in candidate.fields if field.field_name == "product_name"
-    )
+    product_name = next(field for field in candidate.fields if field.field_name == "product_name")
     image = candidate.images[0]
 
     assert result.raw_response_reference_or_hash == "sha256:synthetic-response"
@@ -478,9 +467,7 @@ def test_field_level_provenance_and_image_rights_are_preserved() -> None:
 
 
 def test_single_exact_match_must_preserve_queried_identifier() -> None:
-    provider = MockProvider(
-        result=_result(candidates=(_candidate(identifier="012345678905"),))
-    )
+    provider = MockProvider(result=_result(candidates=(_candidate(identifier="012345678905"),)))
     service = CatalogDiscoveryService(providers=(provider,), clock=lambda: NOW)
 
     outcome = service.discover(_request())
