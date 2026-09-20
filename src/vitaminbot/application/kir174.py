@@ -18,6 +18,7 @@ from vitaminbot.nutrition.reference_values import (
     PopulationProfile,
     ReferenceLifecycle,
     ReferenceQuery,
+    ReferenceRecord,
     ReferenceType,
     lookup_reference,
 )
@@ -105,13 +106,12 @@ class KIR174Controller:
     def card_context(self, telegram_user_id: int, _substance_key: str) -> CardContext:
         base_revision = f"kir174-card:{EU_EFSA_REFERENCE_DATASET.version}"
         bound = self.bound_context(telegram_user_id, base_revision=base_revision)
-        profile = self._base_store.profile(self._base_store.ensure_user(telegram_user_id))
         return CardContext(
             profile=bound.profile,
             exposure=ExposureContext(),
             jurisdiction=Jurisdiction.EU.value,
             context_revision=bound.context_revision,
-            locale=profile.locale or "en",
+            locale="en",
         )
 
     def has_pending_text(self, telegram_user_id: int) -> bool:
@@ -192,6 +192,35 @@ class KIR174Controller:
         )
         return Screen(text="\n".join(lines), rows=tuple(rows))
 
+    def iron_scope_screen(self, telegram_user_id: int, scope_token: str) -> Screen:
+        user_id = self._base_store.ensure_user(telegram_user_id)
+        record = self._store.iron_supervision(user_id, f"iron:{scope_token}")
+        if record.under_medical_supervision is None:
+            text = (
+                "Контекст текущего приёма железа\n\n"
+                "Статус медицинского наблюдения не подтверждён."
+            )
+        else:
+            answer = "да" if record.under_medical_supervision else "нет"
+            text = (
+                "Контекст текущего приёма железа\n\n"
+                f"Приём под медицинским наблюдением: {answer}."
+            )
+        rows = (
+            (
+                Button("Да", f"k174med:{scope_token}:{record.revision}:yes"),
+                Button("Нет", f"k174med:{scope_token}:{record.revision}:no"),
+            ),
+            (
+                Button(
+                    "Удалить ответ",
+                    f"k174mdel:{scope_token}:{record.revision}",
+                ),
+            ),
+            (Button("Назад", "k122safe"),),
+        )
+        return Screen(text=text, rows=rows)
+
     def prompt_for_pairs(
         self,
         telegram_user_id: int,
@@ -254,6 +283,8 @@ class KIR174Controller:
             if data == "k174profile":
                 return self.profile_screen(telegram_user_id)
             if data == "k174skip":
+                if self._store.age_session(user_id) is not None:
+                    self._store.cancel_age_input(user_id)
                 return Screen(
                     text=(
                         "Ничего не сохранено. Применимость остаётся неизвестной, "
@@ -286,13 +317,10 @@ class KIR174Controller:
                     text="Контекст применимости обновлён.",
                     rows=((Button("Назад к справочным значениям", "k122safe"),),),
                 )
-            if parts[0] == "k174med" and len(parts) == 5:
+            if parts[0] == "k174med" and len(parts) == 4:
                 scope_key = f"iron:{parts[1]}"
                 revision = int(parts[2])
                 value = {"yes": True, "no": False}[parts[3]]
-                expected_scope = parts[4]
-                if scope_key != f"iron:{expected_scope}":
-                    raise ValueError("scope mismatch")
                 self._store.save_iron_supervision(
                     user_id,
                     action_key,
@@ -304,6 +332,18 @@ class KIR174Controller:
                     text="Контекст текущего приёма железа обновлён.",
                     rows=((Button("Назад к справочным значениям", "k122safe"),),),
                 )
+            if parts[0] == "k174iron" and len(parts) == 2:
+                return self.iron_scope_screen(telegram_user_id, parts[1])
+            if parts[0] == "k174mdel" and len(parts) == 3:
+                scope_key = f"iron:{parts[1]}"
+                revision = int(parts[2])
+                self._store.delete_iron_supervision(
+                    user_id,
+                    action_key,
+                    scope_key=scope_key,
+                    expected_revision=revision,
+                )
+                return self.iron_scope_screen(telegram_user_id, parts[1])
             if parts[0] == "k174edit" and len(parts) == 3:
                 revision = int(parts[2])
                 return self._edit_prompt(parts[1], revision)
@@ -352,11 +392,11 @@ class KIR174Controller:
                         (
                             Button(
                                 "Да",
-                                f"k174med:{token}:{bound.iron_scope_revision}:yes:{token}",
+                                f"k174med:{token}:{bound.iron_scope_revision}:yes",
                             ),
                             Button(
                                 "Нет",
-                                f"k174med:{token}:{bound.iron_scope_revision}:no:{token}",
+                                f"k174med:{token}:{bound.iron_scope_revision}:no",
                             ),
                         ),
                         (Button("Не сейчас", "k174skip"),),
@@ -407,7 +447,7 @@ class KIR174Controller:
         if not candidates:
             return False
 
-        def blocked(record: object) -> bool:
+        def blocked(record: ReferenceRecord) -> bool:
             return bool(
                 (record.exposure_match_required and exposure.exposure_basis is None)
                 or record.dietary_phytate_mg_per_day is not None
