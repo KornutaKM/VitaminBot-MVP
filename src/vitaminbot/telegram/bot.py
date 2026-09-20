@@ -256,7 +256,6 @@ async def _history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _reply(update, _operational_screen(context, screen))
 
 
-
 async def _composition(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     telegram_user_id = _telegram_user_id(update)
     controller = _vertical_controller(context)
