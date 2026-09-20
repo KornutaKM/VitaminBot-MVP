@@ -11,7 +11,7 @@ from psycopg import sql
 
 from vitaminbot.application.kir116 import KIR116Controller, Screen
 from vitaminbot.application.kir122 import KIR122AnalysisService, KIR122Controller
-from vitaminbot.domain import Unit
+from vitaminbot.domain import AmountBasis, Unit
 from vitaminbot.persistence import migrate
 from vitaminbot.persistence.kir116 import KIR116Store
 from vitaminbot.persistence.kir122 import KIR122Store
@@ -187,6 +187,7 @@ def test_clean_manual_path_produces_snapshot_bound_daily_total(
     assert card_context.confirmed_amount is not None
     assert card_context.confirmed_amount.value == Decimal("400000")
     assert card_context.confirmed_amount.unit is Unit.MICROGRAM
+    assert card_context.confirmed_amount.amount_basis is AmountBasis.ANALYTE
 
     with psycopg.connect(database_url) as conn:
         conn.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(schema)))
