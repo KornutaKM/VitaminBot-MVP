@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 import psycopg
 import pytest
 from psycopg import sql
+from telegram import InlineKeyboardMarkup
 
 import vitaminbot.telegram.reminders as reminder_module
 from vitaminbot.application.kir116 import KIR116Controller, Screen
@@ -507,7 +508,8 @@ def test_runner_reminder_delivery_is_russian_first(
     assert "Reminder" not in text
 
     markup = payload["reply_markup"]
-    rows = getattr(markup, "inline_keyboard")
+    assert isinstance(markup, InlineKeyboardMarkup)
+    rows = markup.inline_keyboard
     buttons = [button for row in rows for button in row]
     labels = [button.text for button in buttons]
     assert any(label.startswith("Принято · ") for label in labels)
