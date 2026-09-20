@@ -19,12 +19,14 @@ from telegram.ext import (
 
 from vitaminbot.application.kir116 import KIR116Controller, Screen
 from vitaminbot.application.kir120 import KIR120Controller
+from vitaminbot.application.kir122 import KIR122AnalysisService, KIR122Controller
 from vitaminbot.application.kir146 import KIR146Controller, NutrientCardRenderer
 from vitaminbot.config import Settings
 from vitaminbot.nutrition.card_content import APPROVED_CARD_CONTENT
 from vitaminbot.nutrition.reference_values import EU_EFSA_REFERENCE_DATASET
 from vitaminbot.persistence.kir116 import KIR116Store
 from vitaminbot.persistence.kir120 import KIR120Store, RoutineTimes
+from vitaminbot.persistence.kir122 import KIR122Store
 from vitaminbot.telegram.reminders import TelegramReminderRunner
 
 
@@ -40,6 +42,11 @@ def _schedule_controller(context: ContextTypes.DEFAULT_TYPE) -> KIR120Controller
 def _nutrient_controller(context: ContextTypes.DEFAULT_TYPE) -> KIR146Controller | None:
     value = context.application.bot_data.get("kir146_controller")
     return None if value is None else cast(KIR146Controller, value)
+
+
+def _vertical_controller(context: ContextTypes.DEFAULT_TYPE) -> KIR122Controller | None:
+    value = context.application.bot_data.get("kir122_controller")
+    return None if value is None else cast(KIR122Controller, value)
 
 
 def _keyboard(screen: Screen) -> InlineKeyboardMarkup | None:
@@ -161,6 +168,16 @@ async def _cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     telegram_user_id = _telegram_user_id(update)
     if telegram_user_id is None:
         return
+    vertical_controller = _vertical_controller(context)
+    if vertical_controller is not None:
+        waiting = await asyncio.to_thread(
+            vertical_controller.has_pending_text,
+            telegram_user_id,
+        )
+        if waiting:
+            screen = await asyncio.to_thread(vertical_controller.cancel, telegram_user_id)
+            await _reply(update, screen)
+            return
     schedule_controller = _schedule_controller(context)
     if schedule_controller is not None:
         waiting = await asyncio.to_thread(
@@ -202,6 +219,15 @@ async def _history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _reply(update, screen)
 
 
+async def _substances(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    telegram_user_id = _telegram_user_id(update)
+    controller = _vertical_controller(context)
+    if telegram_user_id is None or controller is None:
+        return
+    screen = await asyncio.to_thread(controller.substances, telegram_user_id)
+    await _reply(update, screen)
+
+
 async def _text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     telegram_user_id = _telegram_user_id(update)
     message = update.effective_message
@@ -228,6 +254,22 @@ async def _text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await _reply(update, screen)
             return
 
+    vertical_controller = _vertical_controller(context)
+    if vertical_controller is not None:
+        waiting = await asyncio.to_thread(
+            vertical_controller.has_pending_text,
+            telegram_user_id,
+        )
+        if waiting:
+            screen = await asyncio.to_thread(
+                vertical_controller.text,
+                telegram_user_id,
+                message.text,
+                action_key=action_key,
+            )
+            await _reply(update, screen)
+            return
+
     screen = await asyncio.to_thread(
         _controller(context).text,
         telegram_user_id,
@@ -247,7 +289,15 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     action_key = f"cb:{query.id}"
     nutrient_controller = _nutrient_controller(context)
     schedule_controller = _schedule_controller(context)
-    if query.data.startswith("k146") and nutrient_controller is not None:
+    vertical_controller = _vertical_controller(context)
+    if query.data.startswith("k122") and vertical_controller is not None:
+        screen = await asyncio.to_thread(
+            vertical_controller.callback,
+            telegram_user_id,
+            query.data,
+            action_key=action_key,
+        )
+    elif query.data.startswith("k146") and nutrient_controller is not None:
         screen = await asyncio.to_thread(
             nutrient_controller.callback,
             telegram_user_id,
@@ -297,6 +347,7 @@ def build_application(
     schedule_controller: KIR120Controller | None = None,
     reminder_runner: TelegramReminderRunner | None = None,
     nutrient_controller: KIR146Controller | None = None,
+    vertical_controller: KIR122Controller | None = None,
 ) -> Application[Any, Any, Any, Any, Any, Any]:
     builder = ApplicationBuilder().token(token).concurrent_updates(False)
     if reminder_runner is not None:
@@ -309,6 +360,8 @@ def build_application(
         application.bot_data["reminder_runner"] = reminder_runner
     if nutrient_controller is not None:
         application.bot_data["kir146_controller"] = nutrient_controller
+    if vertical_controller is not None:
+        application.bot_data["kir122_controller"] = vertical_controller
 
     application.add_handler(CommandHandler("start", _start))
     application.add_handler(CommandHandler("add", _add))
@@ -321,6 +374,8 @@ def build_application(
     application.add_handler(CommandHandler("help", _help))
     if nutrient_controller is not None:
         application.add_handler(CommandHandler("nutrient", _nutrient))
+    if vertical_controller is not None:
+        application.add_handler(CommandHandler("substances", _substances))
     application.add_handler(CommandHandler("cancel", _cancel))
     application.add_handler(CallbackQueryHandler(_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, _text))
@@ -337,6 +392,10 @@ def main() -> None:
     kir116_store = KIR116Store(settings.database_url)
     kir116_controller = KIR116Controller(kir116_store)
 
+    kir122_store = KIR122Store(settings.database_url)
+    kir122_analysis = KIR122AnalysisService(kir122_store)
+    kir122_controller = KIR122Controller(kir122_store, kir122_analysis)
+
     routine_times = RoutineTimes.from_strings(
         settings.reminder_morning_time,
         settings.reminder_day_time,
@@ -349,6 +408,7 @@ def main() -> None:
     kir120_controller = KIR120Controller(
         kir120_store,
         later_delay=timedelta(minutes=settings.reminder_later_minutes),
+        rationale_provider=kir122_analysis.rationale_for_instance,
     )
     reminder_runner = TelegramReminderRunner(
         kir120_store,
@@ -358,13 +418,17 @@ def main() -> None:
         registry=APPROVED_CARD_CONTENT,
         dataset=EU_EFSA_REFERENCE_DATASET,
     )
-    nutrient_controller = KIR146Controller(nutrient_renderer)
+    nutrient_controller = KIR146Controller(
+        nutrient_renderer,
+        context_provider=kir122_analysis.card_context,
+    )
     application = build_application(
         settings.telegram_bot_token,
         kir116_controller,
         kir120_controller,
         reminder_runner,
         nutrient_controller,
+        kir122_controller,
     )
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
