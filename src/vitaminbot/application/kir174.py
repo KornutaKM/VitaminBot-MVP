@@ -135,7 +135,7 @@ class KIR174Controller:
             return self._age_input_screen(session.age_unit)
 
         try:
-            profile = self._store.save_age(user_id, action_key, value=value)
+            self._store.save_age(user_id, action_key, value=value)
         except ValueError:
             return self._age_input_screen(session.age_unit)
         except StaleApplicabilityAction:
@@ -190,7 +190,8 @@ class KIR174Controller:
         lines.extend(
             [
                 "",
-                "Эти данные не являются медицинским профилем и не используются для вывода «безопасно для вас».",
+                "Эти данные не являются медицинским профилем и не используются "
+                "для вывода «безопасно для вас».",
             ]
         )
         return Screen(text="\n".join(lines), rows=tuple(rows))
