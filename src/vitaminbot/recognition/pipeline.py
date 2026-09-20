@@ -19,8 +19,8 @@ from vitaminbot.recognition.contract import (
     LabelRowObservation,
     PresenceState,
     ProductIdentityObservation,
-    RecordState,
     RecognitionValidationError,
+    RecordState,
     ServingObservation,
     SourceAsset,
     SourceKind,
@@ -644,7 +644,10 @@ class PhotoRecognitionPipeline:
             return ManualEntryFallback(
                 capture_id=candidate.capture.capture_id,
                 reason=ManualFallbackReason.SOURCE_EXPIRED,
-                detail="source image expired before confirmation; request re-upload or manual entry",
+                detail=(
+                    "source image expired before confirmation; "
+                    "request re-upload or manual entry"
+                ),
             )
 
         extraction = candidate.extraction
