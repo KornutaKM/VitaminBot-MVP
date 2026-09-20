@@ -84,9 +84,7 @@ class RuleReason(StrEnum):
     FIXED_COMBINATION_CANNOT_SPLIT = "fixed_combination_cannot_split"
     ITEMS_NOT_SEPARATELY_SCHEDULABLE = "items_not_separately_schedulable"
     HIGHER_PRECEDENCE_INSTRUCTION = "higher_precedence_instruction"
-    CONFLICTING_HIGHER_PRECEDENCE_INSTRUCTIONS = (
-        "conflicting_higher_precedence_instructions"
-    )
+    CONFLICTING_HIGHER_PRECEDENCE_INSTRUCTIONS = "conflicting_higher_precedence_instructions"
     CALCIUM_ELEMENTAL_AMOUNT_REQUIRED = "calcium_elemental_amount_required"
     INTACT_UNITS_NOT_REARRANGEABLE = "intact_units_not_rearrangeable"
     SPLIT_EVIDENCE_BOUNDARY_NOT_REACHED = "split_evidence_boundary_not_reached"
@@ -402,16 +400,12 @@ class SchedulingItem:
         if not self.amounts:
             raise RuleDataError("scheduling item requires at least one canonical amount")
         if any(amount.quantity_basis is not QuantityBasis.ABSOLUTE for amount in self.amounts):
-            raise RuleDataError(
-                "scheduling item amounts must be ABSOLUTE planned-event snapshots"
-            )
+            raise RuleDataError("scheduling item amounts must be ABSOLUTE planned-event snapshots")
         if (
             not self.confirmed_consumption_units.is_finite()
             or self.confirmed_consumption_units <= 0
         ):
-            raise RuleDataError(
-                "confirmed_consumption_units must be finite and greater than zero"
-            )
+            raise RuleDataError("confirmed_consumption_units must be finite and greater than zero")
         if self.fixed_combination_id is not None and not self.fixed_combination_id.strip():
             raise RuleDataError("fixed_combination_id must not be blank")
 
@@ -444,9 +438,7 @@ class RuleEvaluationContext:
             raise RuleDataError("meal slot IDs must be unique")
         for slot in self.meal_slots:
             if slot.context_revision != self.context_revision:
-                raise RuleDataError(
-                    "meal slot revision differs from evaluation context revision"
-                )
+                raise RuleDataError("meal slot revision differs from evaluation context revision")
         instruction_ids = tuple(instruction.instruction_id for instruction in self.instructions)
         if len(set(instruction_ids)) != len(instruction_ids):
             raise RuleDataError("administration instruction IDs must be unique")
@@ -454,9 +446,7 @@ class RuleEvaluationContext:
             if instruction.item_id not in item_id_set:
                 raise RuleDataError("administration instruction references unknown item")
             if instruction.context_revision != self.context_revision:
-                raise RuleDataError(
-                    "instruction revision differs from evaluation context revision"
-                )
+                raise RuleDataError("instruction revision differs from evaluation context revision")
         for item_id in self.instruction_conflict_item_ids:
             if item_id not in item_id_set:
                 raise RuleDataError("instruction conflict references unknown item")
@@ -783,9 +773,7 @@ def _exact_decimal_from_fraction(value: Fraction) -> Decimal:
     if denominator != 1:
         raise RuleDataError("exact rule arithmetic unexpectedly produced non-terminating Decimal")
     scale = max(twos, fives)
-    scaled_numerator = (
-        value.numerator * (5 ** (scale - twos)) * (2 ** (scale - fives))
-    )
+    scaled_numerator = value.numerator * (5 ** (scale - twos)) * (2 ** (scale - fives))
     return Decimal(scaled_numerator).scaleb(-scale)
 
 
@@ -800,9 +788,7 @@ def _instruction_state(
 ) -> tuple[RuleReason | None, tuple[RuleFact, ...], tuple[RuleUnknown, ...]]:
     item_id_set = set(item_ids)
     instructions = tuple(
-        instruction
-        for instruction in context.instructions
-        if instruction.item_id in item_id_set
+        instruction for instruction in context.instructions if instruction.item_id in item_id_set
     )
     conflict = any(item_id in context.instruction_conflict_item_ids for item_id in item_ids)
     if conflict:
@@ -1005,9 +991,7 @@ def _evaluate_calcium_carbonate(
         ruleset,
         SchedulingRuleId.CALCIUM_CARBONATE_WITH_MEAL,
     )
-    meal_slots = tuple(
-        slot.slot_id for slot in context.meal_slots if slot.is_meal_or_snack
-    )
+    meal_slots = tuple(slot.slot_id for slot in context.meal_slots if slot.is_meal_or_snack)
     results: list[SchedulingRuleResult] = []
     for item in sorted(context.items, key=lambda candidate: candidate.item_id):
         calcium_amounts = _amounts(item, CALCIUM_ANALYTE_ID)
@@ -1099,14 +1083,12 @@ def _pair_candidates(
     first_items = tuple(
         item
         for item in context.items
-        if item.source_kind is ItemSourceKind.SUPPLEMENT
-        and _has_subject(item, first_subject)
+        if item.source_kind is ItemSourceKind.SUPPLEMENT and _has_subject(item, first_subject)
     )
     second_items = tuple(
         item
         for item in context.items
-        if item.source_kind is ItemSourceKind.SUPPLEMENT
-        and _has_subject(item, second_subject)
+        if item.source_kind is ItemSourceKind.SUPPLEMENT and _has_subject(item, second_subject)
     )
     pairs: dict[tuple[str, str], tuple[SchedulingItem, SchedulingItem]] = {}
     for first in first_items:
@@ -1155,10 +1137,7 @@ def _evaluate_calcium_iron(
                 )
             )
             continue
-        if not (
-            calcium.units_independently_schedulable
-            and iron.units_independently_schedulable
-        ):
+        if not (calcium.units_independently_schedulable and iron.units_independently_schedulable):
             results.append(
                 _scientific_result(
                     ruleset=ruleset,
@@ -1299,8 +1278,7 @@ def _evaluate_iron_zinc(
     zinc_items = tuple(
         item
         for item in context.items
-        if item.source_kind is ItemSourceKind.SUPPLEMENT
-        and _has_subject(item, ZINC_ANALYTE_ID)
+        if item.source_kind is ItemSourceKind.SUPPLEMENT and _has_subject(item, ZINC_ANALYTE_ID)
     )
     for iron in sorted(context.items, key=lambda candidate: candidate.item_id):
         if not _has_subject(iron, IRON_ANALYTE_ID):
@@ -1399,10 +1377,7 @@ def _evaluate_iron_zinc(
                     )
                 )
                 continue
-            if not (
-                iron.units_independently_schedulable
-                and zinc.units_independently_schedulable
-            ):
+            if not (iron.units_independently_schedulable and zinc.units_independently_schedulable):
                 results.append(
                     _scientific_result(
                         ruleset=ruleset,
@@ -1718,9 +1693,7 @@ def _aggregate_amount(aggregate: DailyAggregate) -> ComputedAmount:
         )
     )
     traces = tuple(
-        trace
-        for contributor in contributors
-        for trace in contributor.original_amount.traces
+        trace for contributor in contributors for trace in contributor.original_amount.traces
     )
 
     return ComputedAmount(
