@@ -43,6 +43,34 @@ _TEXT_REPLACEMENTS: Final[tuple[tuple[str, str], ...]] = (
         "Сам научный текст карточек пока показывается в принятой English-версии.",
     ),
     ("Add a supplement", "Добавить добавку"),
+    ("Timezone updated.", "Часовой пояс обновлён."),
+    ("Locale updated.", "Локаль обновлена."),
+    ("Name updated.", "Название обновлено."),
+    ("Serving updated.", "Порция обновлена."),
+    ("Not set", "Не задано"),
+    (
+        "Plan saved. Morning / Day / Evening are routine buckets, "
+        "not biological timing claims.",
+        "План сохранён. Утро / День / Вечер — части режима, "
+        "а не биологические рекомендации времени.",
+    ),
+    ("Unsupported product-unit choice.", "Неподдерживаемая единица продукта."),
+    ("Unsupported routine bucket.", "Неподдерживаемая часть дня."),
+    (
+        "Enter a positive decimal number, for example 1, 1.5, or 2,5.",
+        "Введите положительное число, например 1, 1.5 или 2,5.",
+    ),
+    ("Enter a valid positive decimal number.", "Введите корректное положительное число."),
+    ("Quantity must be greater than zero.", "Количество должно быть больше нуля."),
+    ("Timezone value is too long.", "Значение часового пояса слишком длинное."),
+    (
+        "I don’t recognize that IANA timezone. Example: Europe/Helsinki.",
+        "Не удалось распознать IANA-часовой пояс. Пример: Europe/Helsinki.",
+    ),
+    (
+        "Use a locale such as en, fi, en-GB, or pt-BR.",
+        "Укажите локаль, например ru, en или en-GB.",
+    ),
     (
         "Choose photo or manual entry. Photo processing fails closed to manual entry until an "
         "authorized production recognition provider is configured.",
@@ -286,6 +314,10 @@ _TEXT_REPLACEMENTS: Final[tuple[tuple[str, str], ...]] = (
         "Точное локальное время сохранено. Количество единиц продукта не изменено.",
     ),
     ("Routine preference updated.", "Настройка режима обновлена."),
+    (
+        "The planned product-unit amount was not changed.",
+        "Запланированное количество единиц продукта не изменено.",
+    ),
     ("Exact local time", "Точное локальное время"),
     (
         "Send a local time as HH:MM, for example 08:30.",
@@ -302,6 +334,11 @@ _TEXT_REPLACEMENTS: Final[tuple[tuple[str, str], ...]] = (
         "Действие устарело или больше невалидно. Повторный факт приёма не записан.",
     ),
     ("Unsupported Today/Plan action.", "Это действие Сегодня/Плана не поддерживается."),
+    (
+        "Send a local time as HH:MM without seconds or timezone.",
+        "Отправьте локальное время как HH:MM, без секунд и часового пояса.",
+    ),
+    ("Invalid Plan reference.", "Ссылка на План устарела или повреждена."),
     ("Today", "Сегодня"),
     (
         "No scheduled occurrences for this local day.",
