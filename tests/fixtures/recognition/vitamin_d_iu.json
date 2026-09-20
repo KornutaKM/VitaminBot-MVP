@@ -1,0 +1,74 @@
+{
+  "schema_version": "1.0.0",
+  "extraction_id": "gold:vitamin-d-iu",
+  "acquisition_method": "photo",
+  "source_assets": [
+    {
+      "asset_id": "img:1",
+      "source_kind": "label_image",
+      "reference": "fixture://vitamin-d-iu"
+    }
+  ],
+  "raw_label_text": "Product: Vitamin D3\nServing Size: 1 capsule\nVitamin D3 (cholecalciferol) 1000 IU",
+  "product_identity": {
+    "product_name": {
+      "field_id": "product_name",
+      "source_kind": "label_image",
+      "presence_state": "present",
+      "raw_text": "Vitamin D3",
+      "normalized_candidate": "Vitamin D3",
+      "confidence": {"band": "high"}
+    }
+  },
+  "serving": {
+    "serving_size": {
+      "field_id": "serving_size",
+      "source_kind": "label_image",
+      "presence_state": "present",
+      "raw_text": "1 capsule",
+      "normalized_candidate": "1 capsule",
+      "confidence": {"band": "high"}
+    }
+  },
+  "rows": [
+    {
+      "row_id": "row:vitamin-d3",
+      "row_raw_text": "Vitamin D3 (cholecalciferol) 1000 IU",
+      "printed_name": {
+        "field_id": "row:d3:name",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "Vitamin D3",
+        "normalized_candidate": "vitamin d3",
+        "confidence": {"band": "high"}
+      },
+      "quantity": {
+        "field_id": "row:d3:quantity",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "1000",
+        "normalized_candidate": "1000",
+        "confidence": {"band": "high"}
+      },
+      "unit": {
+        "field_id": "row:d3:unit",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "IU",
+        "normalized_candidate": "IU",
+        "confidence": {"band": "high"}
+      },
+      "chemical_form": {
+        "field_id": "row:d3:form",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "cholecalciferol",
+        "normalized_candidate": "cholecalciferol",
+        "confidence": {"band": "high"}
+      }
+    }
+  ],
+  "record_ambiguities": [],
+  "record_state": "ready_for_user_confirmation",
+  "confirmation_revision": 0
+}
