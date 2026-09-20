@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 import psycopg
 import pytest
 from psycopg import sql
+from telegram import InlineKeyboardMarkup
 
 import vitaminbot.telegram.reminders as reminder_module
 from vitaminbot.application.kir116 import KIR116Controller, Screen
@@ -475,6 +476,98 @@ class _RecordingBot:
             message_id = 9001
 
         return _Message()
+
+
+def test_runner_reminder_delivery_is_russian_first(
+    kir120_system: tuple[KIR116Controller, KIR120Controller, KIR120Store, str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    kir116, _, store, _, _ = kir120_system
+    telegram_user_id = 701010
+    _prepare_planned_user(kir116, store, telegram_user_id)
+    now = datetime(2026, 9, 20, 6, 0, tzinfo=UTC)
+
+    class _FixedClock(datetime):
+        @classmethod
+        def now(cls, tz: object = None) -> datetime:
+            return now
+
+    monkeypatch.setattr(reminder_module, "datetime", _FixedClock)
+    bot = _RecordingBot()
+    delivered = asyncio.run(TelegramReminderRunner(store).run_once(bot, now=now))
+
+    assert delivered == 1
+    assert len(bot.sent) == 1
+    payload = bot.sent[0]
+    text = payload["text"]
+    assert isinstance(text, str)
+    assert text.startswith("Напоминание")
+    assert "Example supplement: 2 капсулы" in text
+    assert "Количество взято из вашего подтверждённого плана." in text
+    assert "Доставка напоминания не означает, что приём состоялся." in text
+    assert "Reminder" not in text
+
+    markup = payload["reply_markup"]
+    assert isinstance(markup, InlineKeyboardMarkup)
+    rows = markup.inline_keyboard
+    buttons = [button for row in rows for button in row]
+    labels = [button.text for button in buttons]
+    assert any(label.startswith("Принято · ") for label in labels)
+    assert "Позже" in labels
+    assert "Пропустить" in labels
+    assert any(label.startswith("Почему? · ") for label in labels)
+
+    callbacks = [button.callback_data for button in buttons]
+    assert any(value.startswith("k120t:") for value in callbacks)
+    assert any(value.startswith("k120l:") for value in callbacks)
+    assert any(value.startswith("k120s:") for value in callbacks)
+    assert any(value.startswith("k120w:") for value in callbacks)
+
+
+@pytest.mark.parametrize(
+    ("unit_label", "quantity", "expected"),
+    [
+        ("capsule", Decimal("1"), "капсула"),
+        ("capsule", Decimal("2"), "капсулы"),
+        ("capsule", Decimal("4"), "капсулы"),
+        ("capsule", Decimal("5"), "капсул"),
+        ("capsule", Decimal("11"), "капсул"),
+        ("capsule", Decimal("14"), "капсул"),
+        ("capsule", Decimal("21"), "капсула"),
+        ("capsule", Decimal("22"), "капсулы"),
+        ("capsule", Decimal("1.5"), "капсулы"),
+        ("tablet", Decimal("1"), "таблетка"),
+        ("tablet", Decimal("2"), "таблетки"),
+        ("tablet", Decimal("4"), "таблетки"),
+        ("tablet", Decimal("5"), "таблеток"),
+        ("tablet", Decimal("12"), "таблеток"),
+        ("tablet", Decimal("21"), "таблетка"),
+        ("tablet", Decimal("1.5"), "таблетки"),
+        ("softgel", Decimal("1"), "мягкая капсула"),
+        ("softgel", Decimal("3"), "мягкие капсулы"),
+        ("softgel", Decimal("15"), "мягких капсул"),
+        ("softgel", Decimal("1.5"), "мягкой капсулы"),
+        ("scoop", Decimal("1"), "мерная ложка"),
+        ("scoop", Decimal("2"), "мерные ложки"),
+        ("scoop", Decimal("5"), "мерных ложек"),
+        ("scoop", Decimal("1.5"), "мерной ложки"),
+        ("drop", Decimal("1"), "капля"),
+        ("drop", Decimal("4"), "капли"),
+        ("drop", Decimal("11"), "капель"),
+        ("drop", Decimal("1.5"), "капли"),
+    ],
+)
+def test_russian_reminder_unit_inflection(
+    unit_label: str,
+    quantity: Decimal,
+    expected: str,
+) -> None:
+    assert reminder_module._display_unit_label(unit_label, quantity) == expected
+
+
+def test_russian_reminder_fraction_uses_decimal_comma() -> None:
+    assert reminder_module._display_quantity(Decimal("1.5")) == "1,5"
+    assert reminder_module._display_quantity(Decimal("2.00")) == "2"
 
 
 @pytest.mark.parametrize("late_action", ["skip", "take_then_correct"])

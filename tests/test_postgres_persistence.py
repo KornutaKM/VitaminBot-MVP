@@ -21,6 +21,7 @@ def test_packaged_migration_discovery_finds_initial_sql() -> None:
         ("0002", "integrity_constraints"),
         ("0003", "bot_manual_entry"),
         ("0004", "reminders_today"),
+        ("0005", "mvp_vertical_integration"),
     ]
     assert "CREATE TABLE" in migrations[0].sql
     assert "ALTER TABLE" in migrations[1].sql
@@ -69,6 +70,7 @@ def test_migrations_are_reproducible_and_idempotent(
         ("0002", "integrity_constraints"),
         ("0003", "bot_manual_entry"),
         ("0004", "reminders_today"),
+        ("0005", "mvp_vertical_integration"),
     ]
 
 
