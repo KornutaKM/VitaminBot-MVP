@@ -64,6 +64,7 @@ class SnapshotSupplement:
     supplement_revision: int
     product_id: str
     formulation_id: str
+    unit_label: str
     serving: ServingDefinition
     plan: IntakePlan | None
     plan_revision: int | None
@@ -576,7 +577,7 @@ class KIR122Store:
                     SELECT
                         us.instance_id, us.container_label, us.revision AS supplement_revision,
                         us.formulation_id, pf.product_id,
-                        us.current_serving_basis_id,
+                        us.current_serving_basis_id, cu.label_name AS unit_label,
                         ps.basis_type, ps.label_text, ps.source_id AS serving_source_id,
                         ps.basis_quantity, ps.basis_unit, ps.consumption_unit_id,
                         h.plan_id, h.plan_version, h.revision AS plan_revision
@@ -585,6 +586,8 @@ class KIR122Store:
                       ON pf.formulation_id = us.formulation_id
                     JOIN product_servings AS ps
                       ON ps.basis_id = us.current_serving_basis_id
+                    JOIN consumption_units AS cu
+                      ON cu.unit_id = us.current_consumption_unit_id
                     LEFT JOIN intake_plan_heads AS h
                       ON h.tracked_instance_id = us.instance_id
                     WHERE us.user_id = %s
@@ -717,6 +720,7 @@ class KIR122Store:
                             supplement_revision=int(row["supplement_revision"]),
                             product_id=str(row["product_id"]),
                             formulation_id=str(row["formulation_id"]),
+                            unit_label=str(row["unit_label"]),
                             serving=ServingDefinition(
                                 basis_id=str(row["current_serving_basis_id"]),
                                 basis_type=QuantityBasis(str(row["basis_type"])),
