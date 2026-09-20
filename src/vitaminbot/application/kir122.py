@@ -352,12 +352,28 @@ class KIR122Controller:
             self._scope_envelope(view, context_revision=context_revision),
         )
         short_revision = self._short_revision(context_revision)
+        rows: list[tuple[Button, ...]] = [
+            (Button("Почему / источники", f"k122src:{short_revision}"),),
+            (Button("Итоги", "k122tot"), Button("Сегодня", "k120today")),
+        ]
+        if self._applicability_controller is not None:
+            rows.append((Button("Контекст применимости", "k174profile"),))
+            if bound is not None and any(
+                substance_key == "iron"
+                for substance_key, _ in self._reference_pairs(view)
+            ):
+                scope_token = bound.iron_scope_key.removeprefix("iron:")
+                rows.append(
+                    (
+                        Button(
+                            "Контекст текущего приёма железа",
+                            f"k174iron:{scope_token}",
+                        ),
+                    )
+                )
         return Screen(
             text=render_safety_envelopes(envelopes),
-            rows=(
-                (Button("Почему / источники", f"k122src:{short_revision}"),),
-                (Button("Итоги", "k122tot"), Button("Сегодня", "k120today")),
-            ),
+            rows=tuple(rows),
         )
 
     def has_pending_text(self, telegram_user_id: int) -> bool:
