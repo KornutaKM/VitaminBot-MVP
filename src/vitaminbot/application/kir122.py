@@ -23,11 +23,12 @@ from vitaminbot.nutrition import (
     DATASET_VERSION,
     EU_EFSA_REFERENCE_DATASET,
     RULESET_VERSION,
-    AggregateKey,
     BoundDailyAggregation,
     ComputationTrace,
     ComputedAmount,
     ConfirmedPlannedContribution,
+    DailyAggregate,
+    DailyAggregationResult,
     EventRelation,
     ExposureContext,
     ItemSourceKind,
@@ -36,9 +37,11 @@ from vitaminbot.nutrition import (
     PopulationProfile,
     ReferenceLifecycle,
     ReferenceQuery,
+    ReferenceRecord,
     ReferenceStatus,
     ReferenceType,
     RuleEngineGlobalStatus,
+    RuleEngineResult,
     RuleEvaluationContext,
     RuleStatus,
     RuleType,
@@ -53,6 +56,7 @@ from vitaminbot.nutrition import (
 )
 from vitaminbot.persistence.kir116 import KIR116Store, SupplementRecord
 from vitaminbot.persistence.kir122 import (
+    CompositionSession,
     DuplicateCompositionFact,
     InvalidCompositionState,
     KIR122Store,
@@ -98,8 +102,8 @@ _RU_SUBSTANCE_NAMES = {
 @dataclass(frozen=True, slots=True)
 class VerticalView:
     snapshot: VerticalSnapshot
-    aggregation: object
-    rule_result: object
+    aggregation: DailyAggregationResult
+    rule_result: RuleEngineResult
     item_names: dict[str, str]
 
 
@@ -193,13 +197,20 @@ class KIR122Controller:
         ]
         for aggregate in aggregates:
             name = self._subject_name(aggregate.key.subject_id)
-            if aggregate.is_complete and aggregate.known_total is not None and aggregate.unit is not None:
+            if (
+                aggregate.is_complete
+                and aggregate.known_total is not None
+                and aggregate.unit is not None
+            ):
                 total = f"{self._decimal(aggregate.known_total)} {self._unit_label(aggregate.unit)}"
                 lines.append(f"\n{name}: {total}")
             else:
                 lines.append(f"\n{name}: итог неполный — полное значение не показываю")
             for contributor in aggregate.contributors:
-                contributor_name = names.get(contributor.tracked_instance_id, "Подтверждённая добавка")
+                contributor_name = names.get(
+                    contributor.tracked_instance_id,
+                    "Подтверждённая добавка",
+                )
                 lines.append(
                     f"  • {contributor_name}: "
                     f"{self._decimal(contributor.normalized_value)} "
@@ -325,7 +336,12 @@ class KIR122Controller:
                 ]
             )
         for item in presentations:
-            lines.extend(["", f"{item.subject_name} — {self._reference_label(item.reference_type)}"])
+            lines.extend(
+                [
+                    "",
+                    f"{item.subject_name} — {self._reference_label(item.reference_type)}",
+                ]
+            )
             lines.append(item.state_text)
             if item.comparison_text is not None:
                 lines.append(item.comparison_text)
@@ -354,7 +370,12 @@ class KIR122Controller:
         user_id = self._base_store.ensure_user(telegram_user_id)
         session = self._store.session(user_id)
         if session is None or session.state != "amount_input":
-            return Screen(text="Сейчас я не жду значение состава. Откройте «Состав» и выберите нутриент.")
+            return Screen(
+                text=(
+                    "Сейчас я не жду значение состава. "
+                    "Откройте «Состав» и выберите нутриент."
+                )
+            )
 
         parsed = self._parse_amount(text)
         if parsed is None:
@@ -480,7 +501,8 @@ class KIR122Controller:
             return Screen(
                 text=(
                     "Для этого нутриента уже есть подтверждённая ручная строка. "
-                    "Я не заменяю её молча. Удаление/коррекция должны быть отдельным явным действием."
+                    "Я не заменяю её молча. Удаление/коррекция должны быть "
+                    "отдельным явным действием."
                 ),
                 rows=((Button("Состав", "k122comp"),),),
             )
