@@ -58,3 +58,34 @@ CREATE TABLE kir122_manual_amounts (
 
 CREATE INDEX kir122_manual_amounts_user_idx
     ON kir122_manual_amounts(user_id, tracked_instance_id);
+
+
+CREATE TABLE kir122_confirmed_label_records (
+    idempotency_key TEXT PRIMARY KEY CHECK (btrim(idempotency_key) <> ''),
+    user_id UUID NOT NULL
+        REFERENCES users(user_id) ON DELETE CASCADE,
+    candidate_id TEXT NOT NULL CHECK (btrim(candidate_id) <> ''),
+    extraction_payload JSONB NOT NULL,
+    provider_key TEXT NOT NULL CHECK (btrim(provider_key) <> ''),
+    model_revision TEXT NOT NULL CHECK (btrim(model_revision) <> ''),
+    adapter_revision TEXT NOT NULL CHECK (btrim(adapter_revision) <> ''),
+    prompt_revision TEXT NOT NULL CHECK (btrim(prompt_revision) <> ''),
+    schema_revision TEXT NOT NULL CHECK (btrim(schema_revision) <> ''),
+    preprocessing_revision TEXT NOT NULL CHECK (btrim(preprocessing_revision) <> ''),
+    image_sha256 TEXT NOT NULL CHECK (image_sha256 ~ '^[0-9A-Fa-f]{64}$'),
+    raw_response_sha256 TEXT
+        CHECK (
+            raw_response_sha256 IS NULL
+            OR raw_response_sha256 ~ '^[0-9A-Fa-f]{64}$'
+        ),
+    requested_at TIMESTAMPTZ NOT NULL,
+    completed_at TIMESTAMPTZ NOT NULL,
+    confirmed_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id, candidate_id),
+    CHECK (completed_at >= requested_at),
+    CHECK (confirmed_at >= completed_at)
+);
+
+CREATE INDEX kir122_confirmed_label_records_user_idx
+    ON kir122_confirmed_label_records(user_id, confirmed_at DESC);
