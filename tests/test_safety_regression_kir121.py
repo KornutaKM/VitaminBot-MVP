@@ -79,8 +79,8 @@ from vitaminbot.nutrition.rules import (
     RuleStatus,
     RuleWarning,
     SchedulingItem,
-    SchedulingRuleResult,
     SchedulingRuleId,
+    SchedulingRuleResult,
     SplitAction,
     UserRoutinePreference,
     evaluate_rule_engine,
@@ -831,7 +831,8 @@ def _assert_non_strengthening_presentation(
         assert payload["mandatory"] is False
 
 
-def test_bound_daily_aggregation_cannot_cross_snapshot_revision_for_reference_or_duplicate() -> None:
+def test_bound_daily_aggregation_cannot_cross_snapshot_revision_for_reference_or_duplicate(
+) -> None:
     original = _contribution(
         "selenium:original",
         "instance:selenium",
