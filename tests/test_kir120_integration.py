@@ -501,7 +501,7 @@ def test_runner_reminder_delivery_is_russian_first(
     text = payload["text"]
     assert isinstance(text, str)
     assert text.startswith("Напоминание")
-    assert "Example supplement: 2 капсула" in text
+    assert "Example supplement: 2 капсулы" in text
     assert "Количество взято из вашего подтверждённого плана." in text
     assert "Доставка напоминания не означает, что приём состоялся." in text
     assert "Reminder" not in text
@@ -520,6 +520,52 @@ def test_runner_reminder_delivery_is_russian_first(
     assert any(value.startswith("k120l:") for value in callbacks)
     assert any(value.startswith("k120s:") for value in callbacks)
     assert any(value.startswith("k120w:") for value in callbacks)
+
+
+@pytest.mark.parametrize(
+    ("unit_label", "quantity", "expected"),
+    [
+        ("capsule", Decimal("1"), "капсула"),
+        ("capsule", Decimal("2"), "капсулы"),
+        ("capsule", Decimal("4"), "капсулы"),
+        ("capsule", Decimal("5"), "капсул"),
+        ("capsule", Decimal("11"), "капсул"),
+        ("capsule", Decimal("14"), "капсул"),
+        ("capsule", Decimal("21"), "капсула"),
+        ("capsule", Decimal("22"), "капсулы"),
+        ("capsule", Decimal("1.5"), "капсулы"),
+        ("tablet", Decimal("1"), "таблетка"),
+        ("tablet", Decimal("2"), "таблетки"),
+        ("tablet", Decimal("4"), "таблетки"),
+        ("tablet", Decimal("5"), "таблеток"),
+        ("tablet", Decimal("12"), "таблеток"),
+        ("tablet", Decimal("21"), "таблетка"),
+        ("tablet", Decimal("1.5"), "таблетки"),
+        ("softgel", Decimal("1"), "мягкая капсула"),
+        ("softgel", Decimal("3"), "мягкие капсулы"),
+        ("softgel", Decimal("15"), "мягких капсул"),
+        ("softgel", Decimal("1.5"), "мягкой капсулы"),
+        ("scoop", Decimal("1"), "мерная ложка"),
+        ("scoop", Decimal("2"), "мерные ложки"),
+        ("scoop", Decimal("5"), "мерных ложек"),
+        ("scoop", Decimal("1.5"), "мерной ложки"),
+        ("drop", Decimal("1"), "капля"),
+        ("drop", Decimal("4"), "капли"),
+        ("drop", Decimal("11"), "капель"),
+        ("drop", Decimal("1.5"), "капли"),
+    ],
+)
+def test_russian_reminder_unit_inflection(
+    unit_label: str,
+    quantity: Decimal,
+    expected: str,
+) -> None:
+    assert reminder_module._display_unit_label(unit_label, quantity) == expected
+
+
+def test_russian_reminder_fraction_uses_decimal_comma() -> None:
+    assert reminder_module._display_quantity(Decimal("1.5")) == "1,5"
+    assert reminder_module._display_quantity(Decimal("2.00")) == "2"
 
 
 @pytest.mark.parametrize("late_action", ["skip", "take_then_correct"])
