@@ -130,13 +130,18 @@ class SafetyEnvelope:
             if not self.non_droppable_warnings:
                 raise ValueError("fail-closed safety envelope requires a non-droppable warning")
 
-        if self.comparison_context is not None and self.evidence_state is SafetyEvidenceState.SUPPORTED:
+        if (
+            self.comparison_context is not None
+            and self.evidence_state is SafetyEvidenceState.SUPPORTED
+        ):
             if not self.provenance:
                 raise ValueError("supported reference comparison requires provenance")
 
         if self.status is SafetyStatus.POTENTIAL_REFERENCE_LIMIT_CONCERN:
             if self.comparison_context is None or not self.provenance:
-                raise ValueError("reference-limit concern requires comparison context and provenance")
+                raise ValueError(
+                    "reference-limit concern requires comparison context and provenance"
+                )
             if not self.non_droppable_warnings:
                 raise ValueError("reference-limit concern requires non-droppable warning")
 
