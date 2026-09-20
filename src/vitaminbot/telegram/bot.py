@@ -21,6 +21,7 @@ from vitaminbot.application.kir116 import KIR116Controller, Screen
 from vitaminbot.application.kir120 import KIR120Controller
 from vitaminbot.application.kir122 import KIR122AnalysisService, KIR122Controller
 from vitaminbot.application.kir146 import KIR146Controller, NutrientCardRenderer
+from vitaminbot.application.russian_presenter import RussianFirstPresenter
 from vitaminbot.config import Settings
 from vitaminbot.nutrition.card_content import APPROVED_CARD_CONTENT
 from vitaminbot.nutrition.reference_values import EU_EFSA_REFERENCE_DATASET
@@ -47,6 +48,17 @@ def _nutrient_controller(context: ContextTypes.DEFAULT_TYPE) -> KIR146Controller
 def _vertical_controller(context: ContextTypes.DEFAULT_TYPE) -> KIR122Controller | None:
     value = context.application.bot_data.get("kir122_controller")
     return None if value is None else cast(KIR122Controller, value)
+
+
+def _present(
+    context: ContextTypes.DEFAULT_TYPE,
+    surface: str,
+    screen: Screen,
+) -> Screen:
+    value = context.application.bot_data.get("screen_presenter")
+    if value is None:
+        return screen
+    return cast(RussianFirstPresenter, value).project(surface, screen)
 
 
 def _keyboard(screen: Screen) -> InlineKeyboardMarkup | None:
@@ -107,7 +119,7 @@ async def _start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if telegram_user_id is None:
         return
     screen = await asyncio.to_thread(_controller(context).start, telegram_user_id)
-    await _reply(update, screen)
+    await _reply(update, _present(context, "kir116", screen))
 
 
 async def _add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -115,7 +127,7 @@ async def _add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if telegram_user_id is None:
         return
     screen = await asyncio.to_thread(_controller(context).add, telegram_user_id)
-    await _reply(update, screen)
+    await _reply(update, _present(context, "kir116", screen))
 
 
 async def _supplements(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -123,7 +135,7 @@ async def _supplements(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if telegram_user_id is None:
         return
     screen = await asyncio.to_thread(_controller(context).supplements, telegram_user_id)
-    await _reply(update, screen)
+    await _reply(update, _present(context, "kir116", screen))
 
 
 async def _profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -131,7 +143,7 @@ async def _profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if telegram_user_id is None:
         return
     screen = await asyncio.to_thread(_controller(context).profile, telegram_user_id)
-    await _reply(update, screen)
+    await _reply(update, _present(context, "kir116", screen))
 
 
 async def _help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -148,7 +160,7 @@ async def _help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             ),
             rows=screen.rows,
         )
-    await _reply(update, screen)
+    await _reply(update, _present(context, "kir116", screen))
 
 
 async def _nutrient(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -186,10 +198,10 @@ async def _cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         if waiting:
             screen = await asyncio.to_thread(schedule_controller.cancel, telegram_user_id)
-            await _reply(update, screen)
+            await _reply(update, _present(context, "kir120", screen))
             return
     screen = await asyncio.to_thread(_controller(context).cancel, telegram_user_id)
-    await _reply(update, screen)
+    await _reply(update, _present(context, "kir116", screen))
 
 
 async def _today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -198,7 +210,7 @@ async def _today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if telegram_user_id is None or controller is None:
         return
     screen = await asyncio.to_thread(controller.today, telegram_user_id)
-    await _reply(update, screen)
+    await _reply(update, _present(context, "kir120", screen))
 
 
 async def _plan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -207,7 +219,7 @@ async def _plan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if telegram_user_id is None or controller is None:
         return
     screen = await asyncio.to_thread(controller.plan, telegram_user_id)
-    await _reply(update, screen)
+    await _reply(update, _present(context, "kir120", screen))
 
 
 async def _history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -216,7 +228,7 @@ async def _history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if telegram_user_id is None or controller is None:
         return
     screen = await asyncio.to_thread(controller.history, telegram_user_id)
-    await _reply(update, screen)
+    await _reply(update, _present(context, "kir120", screen))
 
 
 async def _substances(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -251,7 +263,7 @@ async def _text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 message.text,
                 action_key=action_key,
             )
-            await _reply(update, screen)
+            await _reply(update, _present(context, "kir120", screen))
             return
 
     vertical_controller = _vertical_controller(context)
@@ -276,7 +288,7 @@ async def _text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         message.text,
         action_key=action_key,
     )
-    await _reply(update, screen)
+    await _reply(update, _present(context, "kir116", screen))
 
 
 async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -290,6 +302,7 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     nutrient_controller = _nutrient_controller(context)
     schedule_controller = _schedule_controller(context)
     vertical_controller = _vertical_controller(context)
+    surface: str | None = None
     if query.data.startswith("k122") and vertical_controller is not None:
         screen = await asyncio.to_thread(
             vertical_controller.callback,
@@ -310,6 +323,7 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             query.data,
             action_key=action_key,
         )
+        surface = "kir120"
     else:
         screen = await asyncio.to_thread(
             _controller(context).callback,
@@ -317,6 +331,9 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             query.data,
             action_key=action_key,
         )
+        surface = "kir116"
+    if surface is not None:
+        screen = _present(context, surface, screen)
     await _project_callback(update, context, screen)
 
 
@@ -348,6 +365,7 @@ def build_application(
     reminder_runner: TelegramReminderRunner | None = None,
     nutrient_controller: KIR146Controller | None = None,
     vertical_controller: KIR122Controller | None = None,
+    screen_presenter: RussianFirstPresenter | None = None,
 ) -> Application[Any, Any, Any, Any, Any, Any]:
     builder = ApplicationBuilder().token(token).concurrent_updates(False)
     if reminder_runner is not None:
@@ -362,6 +380,8 @@ def build_application(
         application.bot_data["kir146_controller"] = nutrient_controller
     if vertical_controller is not None:
         application.bot_data["kir122_controller"] = vertical_controller
+    if screen_presenter is not None:
+        application.bot_data["screen_presenter"] = screen_presenter
 
     application.add_handler(CommandHandler("start", _start))
     application.add_handler(CommandHandler("add", _add))
@@ -422,6 +442,7 @@ def main() -> None:
         nutrient_renderer,
         context_provider=kir122_analysis.card_context,
     )
+    screen_presenter = RussianFirstPresenter()
     application = build_application(
         settings.telegram_bot_token,
         kir116_controller,
@@ -429,6 +450,7 @@ def main() -> None:
         reminder_runner,
         nutrient_controller,
         kir122_controller,
+        screen_presenter,
     )
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
