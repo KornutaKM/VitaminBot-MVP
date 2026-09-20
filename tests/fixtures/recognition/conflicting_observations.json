@@ -1,0 +1,139 @@
+{
+  "schema_version": "1.0.0",
+  "extraction_id": "gold:conflicting-observations",
+  "acquisition_method": "photo",
+  "source_assets": [
+    {
+      "asset_id": "img:1",
+      "source_kind": "label_image",
+      "reference": "fixture://conflicting-observations"
+    }
+  ],
+  "raw_label_text": "Product: Zinc Example\nFront: Zinc 15 mg\nFacts panel: Zinc 10 mg",
+  "product_identity": {
+    "product_name": {
+      "field_id": "product_name",
+      "source_kind": "label_image",
+      "presence_state": "present",
+      "raw_text": "Zinc Example",
+      "normalized_candidate": "Zinc Example",
+      "source_regions": [
+        {
+          "asset_id": "img:1",
+          "region_id": "r:product",
+          "bbox": [0.10, 0.02, 0.70, 0.10]
+        }
+      ],
+      "confidence": {"band": "high"}
+    }
+  },
+  "rows": [
+    {
+      "row_id": "row:zinc-front",
+      "row_raw_text": "Zinc 15 mg",
+      "printed_name": {
+        "field_id": "row:zinc-front:name",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "Zinc",
+        "normalized_candidate": "zinc",
+        "source_regions": [
+          {
+            "asset_id": "img:1",
+            "region_id": "r:zinc-front-name",
+            "bbox": [0.08, 0.18, 0.30, 0.24]
+          }
+        ]
+      },
+      "quantity": {
+        "field_id": "row:zinc-front:quantity",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "15",
+        "normalized_candidate": "15",
+        "source_regions": [
+          {
+            "asset_id": "img:1",
+            "region_id": "r:zinc-front-quantity",
+            "bbox": [0.32, 0.18, 0.40, 0.24]
+          }
+        ],
+        "ambiguity_codes": ["conflicting_observations"],
+        "semantic_state": "unresolved",
+        "downstream_eligibility": "blocked_unresolved"
+      },
+      "unit": {
+        "field_id": "row:zinc-front:unit",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "mg",
+        "normalized_candidate": "mg",
+        "source_regions": [
+          {
+            "asset_id": "img:1",
+            "region_id": "r:zinc-front-unit",
+            "bbox": [0.41, 0.18, 0.49, 0.24]
+          }
+        ]
+      },
+      "ambiguity_codes": ["conflicting_observations"],
+      "semantic_state": "unresolved",
+      "downstream_eligibility": "blocked_unresolved"
+    },
+    {
+      "row_id": "row:zinc-facts",
+      "row_raw_text": "Zinc 10 mg",
+      "printed_name": {
+        "field_id": "row:zinc-facts:name",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "Zinc",
+        "normalized_candidate": "zinc",
+        "source_regions": [
+          {
+            "asset_id": "img:1",
+            "region_id": "r:zinc-facts-name",
+            "bbox": [0.08, 0.62, 0.30, 0.68]
+          }
+        ]
+      },
+      "quantity": {
+        "field_id": "row:zinc-facts:quantity",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "10",
+        "normalized_candidate": "10",
+        "source_regions": [
+          {
+            "asset_id": "img:1",
+            "region_id": "r:zinc-facts-quantity",
+            "bbox": [0.32, 0.62, 0.40, 0.68]
+          }
+        ],
+        "ambiguity_codes": ["conflicting_observations"],
+        "semantic_state": "unresolved",
+        "downstream_eligibility": "blocked_unresolved"
+      },
+      "unit": {
+        "field_id": "row:zinc-facts:unit",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "mg",
+        "normalized_candidate": "mg",
+        "source_regions": [
+          {
+            "asset_id": "img:1",
+            "region_id": "r:zinc-facts-unit",
+            "bbox": [0.41, 0.62, 0.49, 0.68]
+          }
+        ]
+      },
+      "ambiguity_codes": ["conflicting_observations"],
+      "semantic_state": "unresolved",
+      "downstream_eligibility": "blocked_unresolved"
+    }
+  ],
+  "record_ambiguities": ["conflicting_observations"],
+  "record_state": "user_resolution_required",
+  "confirmation_revision": 0
+}
