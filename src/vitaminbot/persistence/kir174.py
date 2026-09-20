@@ -40,9 +40,7 @@ class AgeInputSession:
     expected_profile_revision: int
 
 
-_PROFILE_FIELDS = frozenset(
-    {"sex_applicability", "life_stage", "physiological_condition"}
-)
+_PROFILE_FIELDS = frozenset({"sex_applicability", "life_stage", "physiological_condition"})
 _PROFILE_VALUES = {
     "sex_applicability": frozenset({"male", "female"}),
     "life_stage": frozenset({"general", "pregnancy", "lactation"}),
@@ -289,9 +287,7 @@ class KIR174Store:
         if value not in _PROFILE_VALUES[field]:
             raise ValueError("unsupported applicability profile value")
         with self._connect() as conn:
-            claimed = self._claim_action(
-                conn, user_id, action_key, f"applicability_{field}_save"
-            )
+            claimed = self._claim_action(conn, user_id, action_key, f"applicability_{field}_save")
             current = self._locked_profile(conn, user_id)
             if not claimed:
                 return current
@@ -311,9 +307,7 @@ class KIR174Store:
         if field not in _PROFILE_FIELDS | {"age"}:
             raise ValueError("unsupported applicability profile field")
         with self._connect() as conn:
-            claimed = self._claim_action(
-                conn, user_id, action_key, f"applicability_{field}_delete"
-            )
+            claimed = self._claim_action(conn, user_id, action_key, f"applicability_{field}_delete")
             current = self._locked_profile(conn, user_id)
             if not claimed:
                 return current
@@ -339,9 +333,7 @@ class KIR174Store:
         if not scope_key.strip():
             raise ValueError("scope_key must not be blank")
         with self._connect() as conn:
-            claimed = self._claim_action(
-                conn, user_id, action_key, "iron_supervision_save"
-            )
+            claimed = self._claim_action(conn, user_id, action_key, "iron_supervision_save")
             row = conn.execute(
                 """
                 SELECT under_medical_supervision, revision
@@ -388,9 +380,7 @@ class KIR174Store:
         expected_revision: int,
     ) -> IronSupervisionRecord:
         with self._connect() as conn:
-            claimed = self._claim_action(
-                conn, user_id, action_key, "iron_supervision_delete"
-            )
+            claimed = self._claim_action(conn, user_id, action_key, "iron_supervision_delete")
             row = conn.execute(
                 """
                 SELECT revision
