@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+import pytest
+
 from vitaminbot.domain import (
     AmountBasis,
     LifeStage,
