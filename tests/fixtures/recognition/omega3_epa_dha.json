@@ -1,0 +1,138 @@
+{
+  "schema_version": "1.0.0",
+  "extraction_id": "gold:omega3-epa-dha",
+  "acquisition_method": "photo",
+  "source_assets": [
+    {
+      "asset_id": "img:1",
+      "source_kind": "label_image",
+      "reference": "fixture://omega3-epa-dha"
+    }
+  ],
+  "raw_label_text": "Product: Omega-3\nServing Size: 2 softgels\nFish Oil 1000 mg\nTotal Omega-3 Fatty Acids 600 mg\nEPA 360 mg\nDHA 240 mg",
+  "product_identity": {
+    "product_name": {
+      "field_id": "product_name",
+      "source_kind": "label_image",
+      "presence_state": "present",
+      "raw_text": "Omega-3",
+      "normalized_candidate": "Omega-3",
+      "confidence": {"band": "high"}
+    }
+  },
+  "serving": {
+    "serving_size": {
+      "field_id": "serving_size",
+      "source_kind": "label_image",
+      "presence_state": "present",
+      "raw_text": "2 softgels",
+      "normalized_candidate": "2 softgels",
+      "confidence": {"band": "high"}
+    }
+  },
+  "rows": [
+    {
+      "row_id": "row:fish-oil",
+      "row_raw_text": "Fish Oil 1000 mg",
+      "printed_name": {
+        "field_id": "row:fish-oil:name",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "Fish Oil",
+        "normalized_candidate": "fish oil"
+      },
+      "quantity": {
+        "field_id": "row:fish-oil:quantity",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "1000",
+        "normalized_candidate": "1000"
+      },
+      "unit": {
+        "field_id": "row:fish-oil:unit",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "mg",
+        "normalized_candidate": "mg"
+      }
+    },
+    {
+      "row_id": "row:omega3",
+      "row_raw_text": "Total Omega-3 Fatty Acids 600 mg",
+      "printed_name": {
+        "field_id": "row:omega3:name",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "Total Omega-3 Fatty Acids",
+        "normalized_candidate": "total omega-3 fatty acids"
+      },
+      "quantity": {
+        "field_id": "row:omega3:quantity",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "600",
+        "normalized_candidate": "600"
+      },
+      "unit": {
+        "field_id": "row:omega3:unit",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "mg",
+        "normalized_candidate": "mg"
+      }
+    },
+    {
+      "row_id": "row:epa",
+      "row_raw_text": "EPA 360 mg",
+      "printed_name": {
+        "field_id": "row:epa:name",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "EPA",
+        "normalized_candidate": "EPA"
+      },
+      "quantity": {
+        "field_id": "row:epa:quantity",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "360",
+        "normalized_candidate": "360"
+      },
+      "unit": {
+        "field_id": "row:epa:unit",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "mg",
+        "normalized_candidate": "mg"
+      }
+    },
+    {
+      "row_id": "row:dha",
+      "row_raw_text": "DHA 240 mg",
+      "printed_name": {
+        "field_id": "row:dha:name",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "DHA",
+        "normalized_candidate": "DHA"
+      },
+      "quantity": {
+        "field_id": "row:dha:quantity",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "240",
+        "normalized_candidate": "240"
+      },
+      "unit": {
+        "field_id": "row:dha:unit",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "mg",
+        "normalized_candidate": "mg"
+      }
+    }
+  ],
+  "record_ambiguities": [],
+  "record_state": "ready_for_user_confirmation",
+  "confirmation_revision": 0
+}

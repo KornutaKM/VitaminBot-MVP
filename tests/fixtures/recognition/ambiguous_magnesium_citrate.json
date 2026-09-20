@@ -1,0 +1,69 @@
+{
+  "schema_version": "1.0.0",
+  "extraction_id": "gold:ambiguous-magnesium-citrate",
+  "acquisition_method": "photo",
+  "source_assets": [
+    {
+      "asset_id": "img:1",
+      "source_kind": "label_image",
+      "reference": "fixture://ambiguous-magnesium-citrate"
+    }
+  ],
+  "raw_label_text": "Product: Magnesium Citrate\nServing Size: 1 tablet\nMagnesium Citrate 500 mg",
+  "product_identity": {
+    "product_name": {
+      "field_id": "product_name",
+      "source_kind": "label_image",
+      "presence_state": "present",
+      "raw_text": "Magnesium Citrate",
+      "normalized_candidate": "Magnesium Citrate",
+      "confidence": {"band": "high"}
+    }
+  },
+  "serving": {
+    "serving_size": {
+      "field_id": "serving_size",
+      "source_kind": "label_image",
+      "presence_state": "present",
+      "raw_text": "1 tablet",
+      "normalized_candidate": "1 tablet",
+      "confidence": {"band": "high"}
+    }
+  },
+  "rows": [
+    {
+      "row_id": "row:magnesium-citrate",
+      "row_raw_text": "Magnesium Citrate 500 mg",
+      "printed_name": {
+        "field_id": "row:mc:name",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "Magnesium Citrate",
+        "normalized_candidate": "magnesium citrate",
+        "confidence": {"band": "high"}
+      },
+      "quantity": {
+        "field_id": "row:mc:quantity",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "500",
+        "normalized_candidate": "500",
+        "confidence": {"band": "high"}
+      },
+      "unit": {
+        "field_id": "row:mc:unit",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "mg",
+        "normalized_candidate": "mg",
+        "confidence": {"band": "high"}
+      },
+      "ambiguity_codes": ["compound_vs_elemental_unclear"],
+      "semantic_state": "unresolved",
+      "downstream_eligibility": "blocked_unresolved"
+    }
+  ],
+  "record_ambiguities": ["compound_vs_elemental_unclear"],
+  "record_state": "user_resolution_required",
+  "confirmation_revision": 0
+}

@@ -1,0 +1,168 @@
+{
+  "schema_version": "1.0.0",
+  "extraction_id": "gold:magnesium-b6",
+  "acquisition_method": "photo",
+  "source_assets": [
+    {
+      "asset_id": "img:1",
+      "source_kind": "label_image",
+      "reference": "fixture://magnesium-b6"
+    }
+  ],
+  "raw_label_text": "Brand: Example Labs\nProduct: Magnesium + B6\nServing Size: 2 tablets\nServings Per Container: 30\nMagnesium 200 mg (as magnesium citrate) 53% NRV\nVitamin B6 1.4 mg (as pyridoxine hydrochloride) 100% NRV",
+  "product_identity": {
+    "product_name": {
+      "field_id": "product_name",
+      "source_kind": "label_image",
+      "presence_state": "present",
+      "raw_text": "Magnesium + B6",
+      "normalized_candidate": "Magnesium + B6",
+      "source_regions": [
+        {
+          "asset_id": "img:1",
+          "region_id": "r:product",
+          "bbox": [0.10, 0.05, 0.70, 0.12]
+        }
+      ],
+      "confidence": {"band": "high"}
+    },
+    "brand": {
+      "field_id": "brand",
+      "source_kind": "label_image",
+      "presence_state": "present",
+      "raw_text": "Example Labs",
+      "normalized_candidate": "Example Labs",
+      "source_regions": [
+        {
+          "asset_id": "img:1",
+          "region_id": "r:brand",
+          "bbox": [0.10, 0.01, 0.50, 0.05]
+        }
+      ],
+      "confidence": {"band": "high"}
+    }
+  },
+  "serving": {
+    "serving_size": {
+      "field_id": "serving_size",
+      "source_kind": "label_image",
+      "presence_state": "present",
+      "raw_text": "2 tablets",
+      "normalized_candidate": "2 tablets",
+      "confidence": {"band": "high"}
+    },
+    "servings_per_container": {
+      "field_id": "servings_per_container",
+      "source_kind": "label_image",
+      "presence_state": "present",
+      "raw_text": "30",
+      "normalized_candidate": "30",
+      "confidence": {"band": "high"}
+    },
+    "serving_basis": {
+      "field_id": "serving_basis",
+      "source_kind": "label_image",
+      "presence_state": "present",
+      "raw_text": "per serving",
+      "normalized_candidate": "per_label_portion",
+      "confidence": {"band": "high"}
+    }
+  },
+  "rows": [
+    {
+      "row_id": "row:magnesium",
+      "row_raw_text": "Magnesium 200 mg (as magnesium citrate) 53% NRV",
+      "printed_name": {
+        "field_id": "row:magnesium:name",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "Magnesium",
+        "normalized_candidate": "magnesium",
+        "confidence": {"band": "high"}
+      },
+      "quantity": {
+        "field_id": "row:magnesium:quantity",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "200",
+        "normalized_candidate": "200",
+        "confidence": {"band": "high"}
+      },
+      "unit": {
+        "field_id": "row:magnesium:unit",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "mg",
+        "normalized_candidate": "mg",
+        "confidence": {"band": "high"}
+      },
+      "chemical_form": {
+        "field_id": "row:magnesium:form",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "magnesium citrate",
+        "normalized_candidate": "magnesium citrate",
+        "confidence": {"band": "high"}
+      },
+      "reference_values": [
+        {
+          "field_id": "row:magnesium:nrv",
+          "source_kind": "label_image",
+          "presence_state": "present",
+          "raw_text": "53% NRV",
+          "normalized_candidate": "53% NRV",
+          "confidence": {"band": "high"}
+        }
+      ]
+    },
+    {
+      "row_id": "row:b6",
+      "row_raw_text": "Vitamin B6 1.4 mg (as pyridoxine hydrochloride) 100% NRV",
+      "printed_name": {
+        "field_id": "row:b6:name",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "Vitamin B6",
+        "normalized_candidate": "vitamin b6",
+        "confidence": {"band": "high"}
+      },
+      "quantity": {
+        "field_id": "row:b6:quantity",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "1.4",
+        "normalized_candidate": "1.4",
+        "confidence": {"band": "high"}
+      },
+      "unit": {
+        "field_id": "row:b6:unit",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "mg",
+        "normalized_candidate": "mg",
+        "confidence": {"band": "high"}
+      },
+      "chemical_form": {
+        "field_id": "row:b6:form",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "pyridoxine hydrochloride",
+        "normalized_candidate": "pyridoxine hydrochloride",
+        "confidence": {"band": "high"}
+      },
+      "reference_values": [
+        {
+          "field_id": "row:b6:nrv",
+          "source_kind": "label_image",
+          "presence_state": "present",
+          "raw_text": "100% NRV",
+          "normalized_candidate": "100% NRV",
+          "confidence": {"band": "high"}
+        }
+      ]
+    }
+  ],
+  "record_ambiguities": [],
+  "record_state": "ready_for_user_confirmation",
+  "confirmation_revision": 0
+}
