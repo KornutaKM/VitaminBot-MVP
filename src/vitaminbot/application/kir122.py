@@ -220,7 +220,9 @@ class KIR122AnalysisService:
                         source_kind=ItemSourceKind.SUPPLEMENT,
                         amounts=event_amounts,
                         confirmed_consumption_units=event.consumption_units,
-                        units_independently_schedulable=False,
+                        units_independently_schedulable=(
+                            supplement.unit_label in {"capsule", "tablet", "softgel"}
+                        ),
                     )
                 )
                 item_names.append((item_id, supplement.name))
