@@ -145,8 +145,7 @@ class KIR120Controller:
         for entry in entries:
             status = "entered in error" if entry.entered_in_error else entry.action_kind
             lines.append(
-                f"• {entry.name}: {_display_decimal(entry.quantity)} "
-                f"{entry.unit_label} — {status}"
+                f"• {entry.name}: {_display_decimal(entry.quantity)} {entry.unit_label} — {status}"
             )
             if entry.correctable:
                 rows.append(

@@ -817,9 +817,7 @@ class KIR120Store:
             for row in rows:
                 attempt_number = int(row["failed_attempts"]) + 1
                 delivery_id = f"delivery:k120:{uuid4().hex}"
-                idempotency_key = (
-                    f"{execution_key}:{row['occurrence_id']}:{int(row['revision'])}"
-                )
+                idempotency_key = f"{execution_key}:{row['occurrence_id']}:{int(row['revision'])}"
                 inserted = conn.execute(
                     """
                     INSERT INTO reminder_delivery_attempts (

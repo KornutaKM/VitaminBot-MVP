@@ -240,9 +240,7 @@ async def _reminder_post_init(
     if runner_value is None:
         return
     runner = cast(TelegramReminderRunner, runner_value)
-    application.bot_data["reminder_task"] = asyncio.create_task(
-        runner.run_forever(application.bot)
-    )
+    application.bot_data["reminder_task"] = asyncio.create_task(runner.run_forever(application.bot))
 
 
 async def _reminder_post_shutdown(

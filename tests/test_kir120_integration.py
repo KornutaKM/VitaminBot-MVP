@@ -25,9 +25,7 @@ from vitaminbot.telegram.bot import build_application
 
 
 @pytest.fixture
-def kir120_system() -> Iterator[
-    tuple[KIR116Controller, KIR120Controller, KIR120Store, str, str]
-]:
+def kir120_system() -> Iterator[tuple[KIR116Controller, KIR120Controller, KIR120Store, str, str]]:
     database_url = os.getenv("DATABASE_URL")
     if database_url is None:
         pytest.skip("DATABASE_URL is required for KIR-120 integration tests")
@@ -282,15 +280,21 @@ def test_restart_recovery_is_bounded_and_unknown_send_is_not_auto_retried(
         schema=schema,
         routine_times=RoutineTimes.from_strings("08:00", "13:00", "19:00"),
     )
-    assert restarted.claim_due_reminders(
-        now + timedelta(seconds=30),
-        "cycle:restart-b",
-    ) == ()
+    assert (
+        restarted.claim_due_reminders(
+            now + timedelta(seconds=30),
+            "cycle:restart-b",
+        )
+        == ()
+    )
 
-    assert restarted.claim_due_reminders(
-        now + timedelta(minutes=3),
-        "cycle:restart-c",
-    ) == ()
+    assert (
+        restarted.claim_due_reminders(
+            now + timedelta(minutes=3),
+            "cycle:restart-c",
+        )
+        == ()
+    )
 
     with _connect(database_url, schema) as conn:
         assert conn.execute(
@@ -380,10 +384,7 @@ def test_taken_correction_marks_intake_entered_in_error_and_requires_review(
 
     history = store.history(user_id)
     assert any(entry.action_kind == "correction" for entry in history)
-    assert any(
-        entry.action_kind == "taken" and entry.entered_in_error
-        for entry in history
-    )
+    assert any(entry.action_kind == "taken" and entry.entered_in_error for entry in history)
     history_screen = controller.history(telegram_user_id)
     assert "entered in error" in history_screen.text
 
@@ -402,11 +403,7 @@ def test_controller_stale_callbacks_fail_closed_and_why_is_preference_only(
     now = datetime(2026, 9, 20, 6, 0, tzinfo=UTC)
 
     today = controller.today(telegram_user_id, now=now)
-    all_callbacks = [
-        button.callback_data
-        for row in today.rows
-        for button in row
-    ]
+    all_callbacks = [button.callback_data for row in today.rows for button in row]
     assert all(len(value.encode("utf-8")) <= 64 for value in all_callbacks)
     assert all("Example supplement" not in value for value in all_callbacks)
 
