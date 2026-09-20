@@ -144,7 +144,7 @@ def test_clean_account_vertical_flow_is_snapshot_bound_and_fail_closed(
         KIR116Store,
     ],
 ) -> None:
-    base, schedule, vertical, store = vertical_stack
+    base, schedule, vertical, _store = vertical_stack
     telegram_user_id = 122001
     _create_clean_account(base, telegram_user_id)
 
@@ -184,7 +184,6 @@ def test_clean_account_vertical_flow_is_snapshot_bound_and_fail_closed(
         action_key="cb:composition:confirm",
     )
     assert "Состав подтверждён" in duplicate.text
-    user_id = store.ensure_user(telegram_user_id)
     listed = vertical.composition(telegram_user_id)
     assert "1 подтверждено" in listed.text
 
