@@ -14,6 +14,13 @@ jobs:
     name: Linux — lint, type, and test
     runs-on: [self-hosted, Linux, X64, vitaminbot]
     timeout-minutes: 10
+    env:
+      POSTGRES_DB: vitaminbot_ci
+      POSTGRES_USER: vitaminbot_ci
+      POSTGRES_PASSWORD: vitaminbot_ci_only
+      POSTGRES_PORT: "55432"
+      DATABASE_URL: postgresql://vitaminbot_ci:vitaminbot_ci_only@127.0.0.1:55432/vitaminbot_ci
+      COMPOSE_PROJECT_NAME: vitaminbot-ci-${{ github.run_id }}-${{ github.run_attempt }}
 
     steps:
       - name: Check out repository
@@ -39,8 +46,45 @@ jobs:
       - name: Mypy
         run: mypy src
 
+      - name: Start PostgreSQL for integration tests
+        shell: bash
+        run: |
+          compose() {
+            sudo -n env \
+              POSTGRES_DB="$POSTGRES_DB" \
+              POSTGRES_USER="$POSTGRES_USER" \
+              POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+              POSTGRES_PORT="$POSTGRES_PORT" \
+              COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME" \
+              docker compose "$@"
+          }
+
+          compose up -d postgres
+          for attempt in $(seq 1 30); do
+            if compose exec -T postgres \
+              pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"; then
+              exit 0
+            fi
+            sleep 1
+          done
+
+          compose logs postgres
+          exit 1
+
       - name: Pytest
         run: pytest
+
+      - name: Stop PostgreSQL integration service
+        if: always()
+        shell: bash
+        run: |
+          sudo -n env \
+            POSTGRES_DB="$POSTGRES_DB" \
+            POSTGRES_USER="$POSTGRES_USER" \
+            POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+            POSTGRES_PORT="$POSTGRES_PORT" \
+            COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME" \
+            docker compose down -v --remove-orphans
 
   compatibility-windows:
     name: Windows — compatibility (non-blocking)
