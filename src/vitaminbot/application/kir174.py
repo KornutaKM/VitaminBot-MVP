@@ -322,12 +322,12 @@ class KIR174Controller:
             if parts[0] == "k174med" and len(parts) == 4:
                 scope_key = f"iron:{parts[1]}"
                 revision = int(parts[2])
-                value = {"yes": True, "no": False}[parts[3]]
+                supervision_value = {"yes": True, "no": False}[parts[3]]
                 self._store.save_iron_supervision(
                     user_id,
                     action_key,
                     scope_key=scope_key,
-                    value=value,
+                    value=supervision_value,
                     expected_revision=revision,
                 )
                 return Screen(
