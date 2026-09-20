@@ -50,7 +50,7 @@ jobs:
         shell: bash
         run: |
           compose() {
-            sudo -n env \
+            env \
               POSTGRES_DB="$POSTGRES_DB" \
               POSTGRES_USER="$POSTGRES_USER" \
               POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
@@ -78,13 +78,15 @@ jobs:
         if: always()
         shell: bash
         run: |
-          sudo -n env \
-            POSTGRES_DB="$POSTGRES_DB" \
-            POSTGRES_USER="$POSTGRES_USER" \
-            POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-            POSTGRES_PORT="$POSTGRES_PORT" \
-            COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME" \
-            docker compose down -v --remove-orphans
+          if docker info >/dev/null 2>&1; then
+            env \
+              POSTGRES_DB="$POSTGRES_DB" \
+              POSTGRES_USER="$POSTGRES_USER" \
+              POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+              POSTGRES_PORT="$POSTGRES_PORT" \
+              COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME" \
+              docker compose down -v --remove-orphans
+          fi
 
   compatibility-windows:
     name: Windows — compatibility (non-blocking)
