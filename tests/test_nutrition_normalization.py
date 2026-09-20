@@ -85,6 +85,7 @@ def test_negative_mass_rejected() -> None:
     with pytest.raises(ValueError):
         convert_mass(Decimal("-1"), Unit.MILLIGRAM, Unit.MICROGRAM)
 
+
 def test_infinite_resolved_source_amount_is_rejected_before_fraction() -> None:
     amount = AmountRecord(
         amount_id="amount:infinite",
@@ -102,6 +103,7 @@ def test_infinite_resolved_source_amount_is_rejected_before_fraction() -> None:
 
     with pytest.raises(ValueError):
         normalize_per_consumption_unit(amount, _serving("2"))
+
 
 def test_computed_amount_rejects_subject_amount_basis_mismatch() -> None:
     with pytest.raises(NormalizationError):
@@ -225,6 +227,7 @@ def test_vitamin_d_1000_iu_to_25_ug(chemical_form_id: str) -> None:
     assert trace.rule_id == VITAMIN_D_D2_D3_RULE.rule_id
     assert trace.authority_source_id == "doi:10.2903/j.efsa.2023.8145"
 
+
 def test_vitamin_d_1_iu_to_exact_0_025_ug() -> None:
     outcome = apply_scientific_conversion(
         _vitamin_d_amount("1", Unit.INTERNATIONAL_UNIT),
@@ -256,6 +259,7 @@ def test_vitamin_d_reverse_is_exact_reciprocal(chemical_form_id: str) -> None:
     assert outcome.amount.unit is Unit.INTERNATIONAL_UNIT
     assert VITAMIN_D_D2_D3_RULE.reciprocal_factor == 40
 
+
 def test_scientific_and_serving_normalization_compose_with_lineage() -> None:
     converted = apply_scientific_conversion(
         _vitamin_d_amount("1000", Unit.INTERNATIONAL_UNIT),
@@ -280,6 +284,7 @@ def test_scientific_and_serving_normalization_compose_with_lineage() -> None:
         "scientific_conversion",
         "serving_normalization",
     ]
+
 
 def test_scientific_conversion_cannot_change_resolved_chemical_form() -> None:
     converted = apply_scientific_conversion(
@@ -384,6 +389,7 @@ def test_magnesium_per_serving_to_per_capsule() -> None:
     assert outcome.amount.quantity_basis is QuantityBasis.PER_CONSUMPTION_UNIT
     assert outcome.amount.consumption_unit_id == CAPSULE_ID
     assert PORTION_ID in outcome.amount.source_quantity_basis_ids
+
 
 def test_finite_decimal_serving_fraction_with_unequal_two_five_powers_is_exact() -> None:
     outcome = normalize_per_consumption_unit(
