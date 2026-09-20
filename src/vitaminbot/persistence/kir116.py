@@ -9,7 +9,6 @@ import psycopg
 from psycopg import sql
 from psycopg.rows import dict_row
 
-
 _COUNT_UNIT_LABELS = frozenset({"capsule", "tablet", "softgel", "scoop", "drop"})
 
 
