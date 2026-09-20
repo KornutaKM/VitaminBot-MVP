@@ -17,9 +17,9 @@ from vitaminbot.domain import (
     Unit,
 )
 from vitaminbot.nutrition.aggregation import (
+    ConfirmedPlannedContribution,
     DailyAggregate,
     DailyAggregationResult,
-    ConfirmedPlannedContribution,
     aggregate_daily_contributions,
 )
 from vitaminbot.nutrition.normalization import (
@@ -52,7 +52,6 @@ from vitaminbot.persistence.kir122 import (
     KIR122StaleAction,
     KIR122Store,
     NutrientEntrySession,
-    SnapshotSupplement,
     VerticalSnapshot,
 )
 
@@ -692,7 +691,13 @@ class KIR122Controller:
                     ),
                     rows=screen.rows,
                 )
-        except (IndexError, ValueError, KIR122InvalidTransition, KIR122StaleAction, KIR122RecordNotFound):
+        except (
+            IndexError,
+            ValueError,
+            KIR122InvalidTransition,
+            KIR122StaleAction,
+            KIR122RecordNotFound,
+        ):
             return self._stale_screen()
 
         return Screen(
