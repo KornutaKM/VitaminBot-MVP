@@ -975,4 +975,3 @@ def test_candidate_resolution_without_candidate_fails_at_commit(
                     """,
                     (user_id,),
                 )
-
