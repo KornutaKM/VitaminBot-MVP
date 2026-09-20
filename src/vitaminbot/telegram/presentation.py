@@ -130,8 +130,7 @@ _PHRASE_REPLACEMENTS = (
         "Это ваши повторяющиеся настройки режима.",
     ),
     (
-        "Plan saved. Morning / Day / Evening are routine buckets, "
-        "not biological timing claims.",
+        "Plan saved. Morning / Day / Evening are routine buckets, not biological timing claims.",
         "План сохранён. Утро / День / Вечер — организационные метки, "
         "а не утверждения о биологически лучшем времени.",
     ),
@@ -153,8 +152,7 @@ _PHRASE_REPLACEMENTS = (
     ),
     (
         "Today could not resolve the stored schedule safely. No reminder occurrence was guessed.",
-        "Не удалось безопасно разрешить сохранённое расписание. "
-        "Время напоминания не было угадано.",
+        "Не удалось безопасно разрешить сохранённое расписание. Время напоминания не было угадано.",
     ),
     (
         "No scheduled occurrences for this local day. Plan is the recurring-template view.",
@@ -216,8 +214,10 @@ _PHRASE_REPLACEMENTS = (
         "Start again from Add supplement.",
         "Начните снова с добавления добавки.",
     ),
-    ("Pending input cancelled. No confirmed supplement or plan was changed.",
-     "Ввод отменён. Подтверждённая добавка и план не изменены."),
+    (
+        "Pending input cancelled. No confirmed supplement or plan was changed.",
+        "Ввод отменён. Подтверждённая добавка и план не изменены.",
+    ),
     ("Timezone:", "Часовой пояс:"),
     ("Locale:", "Язык интерфейса:"),
     ("Morning —", "Утро —"),
