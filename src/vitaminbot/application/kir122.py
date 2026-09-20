@@ -359,8 +359,7 @@ class KIR122Controller:
         if self._applicability_controller is not None:
             rows.append((Button("Контекст применимости", "k174profile"),))
             if bound is not None and any(
-                substance_key == "iron"
-                for substance_key, _ in self._reference_pairs(view)
+                substance_key == "iron" for substance_key, _ in self._reference_pairs(view)
             ):
                 scope_token = bound.iron_scope_key.removeprefix("iron:")
                 rows.append(
@@ -894,9 +893,7 @@ class KIR122Controller:
 
             for substance_key, reference_type in pairs:
                 context_revision = (
-                    view.snapshot.context_revision
-                    if bound is None
-                    else bound.context_revision
+                    view.snapshot.context_revision if bound is None else bound.context_revision
                 )
                 profile = PopulationProfile() if bound is None else bound.profile
                 exposure = (
