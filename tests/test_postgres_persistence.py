@@ -10,6 +10,16 @@ import pytest
 from psycopg import sql
 
 from vitaminbot.persistence import migrate
+from vitaminbot.persistence.migrations import discover_migrations
+
+
+def test_packaged_migration_discovery_finds_initial_sql() -> None:
+    migrations = discover_migrations()
+
+    assert [(migration.version, migration.name) for migration in migrations] == [
+        ("0001", "initial")
+    ]
+    assert "CREATE TABLE" in migrations[0].sql
 
 
 @pytest.fixture
