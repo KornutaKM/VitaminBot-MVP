@@ -327,7 +327,7 @@ class KIR122Controller:
     def safety(self, telegram_user_id: int) -> Screen:
         user_id = self._base_store.ensure_user(telegram_user_id)
         view = self._build_view(user_id)
-        envelopes = self._reference_envelopes(view)
+        envelopes = self._reference_envelopes(view) + (self._scope_envelope(view),)
         short_revision = self._short_revision(view.snapshot.context_revision)
         return Screen(
             text=render_safety_envelopes(envelopes),
