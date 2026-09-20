@@ -44,9 +44,22 @@ class TelegramReminderRunner:
 
         delivered = 0
         for (telegram_user_id, _), group in groups.items():
-            group.sort(key=lambda claim: (claim.name, claim.occurrence_id))
-            text = _render_group(group)
-            markup = _render_keyboard(group)
+            final_group: list[DeliveryClaim] = []
+            revalidation_time = datetime.now(UTC)
+            for claim in group:
+                current_claim = self._store.validate_claim(
+                    claim.delivery_id,
+                    revalidation_time,
+                )
+                if current_claim is not None:
+                    final_group.append(current_claim)
+
+            if not final_group:
+                continue
+
+            final_group.sort(key=lambda claim: (claim.name, claim.occurrence_id))
+            text = _render_group(final_group)
+            markup = _render_keyboard(final_group)
             try:
                 message = await bot.send_message(
                     chat_id=telegram_user_id,
@@ -55,7 +68,7 @@ class TelegramReminderRunner:
                 )
             except Exception as exc:
                 failure_code = type(exc).__name__
-                for claim in group:
+                for claim in final_group:
                     self._store.mark_delivery_failed(
                         claim.delivery_id,
                         failure_code,
@@ -64,7 +77,7 @@ class TelegramReminderRunner:
                 continue
 
             completed_at = datetime.now(UTC)
-            for claim in group:
+            for claim in final_group:
                 self._store.mark_delivery_sent(
                     claim.delivery_id,
                     str(message.message_id),

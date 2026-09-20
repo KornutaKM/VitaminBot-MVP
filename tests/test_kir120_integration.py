@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, time, timedelta
@@ -22,6 +23,8 @@ from vitaminbot.persistence.kir120 import (
     RoutineTimes,
 )
 from vitaminbot.telegram.bot import build_application
+from vitaminbot.telegram.reminders import TelegramReminderRunner
+import vitaminbot.telegram.reminders as reminder_module
 
 
 @pytest.fixture
@@ -459,3 +462,101 @@ def test_today_requires_explicit_timezone_and_bot_registers_kir120_commands(
     assert application.bot_data["kir116_controller"] is kir116
     assert application.bot_data["kir120_controller"] is controller
     assert len(application.handlers[0]) == 11
+
+
+class _RecordingBot:
+    def __init__(self) -> None:
+        self.sent: list[dict[str, object]] = []
+
+    async def send_message(self, **kwargs: object) -> object:
+        self.sent.append(dict(kwargs))
+
+        class _Message:
+            message_id = 9001
+
+        return _Message()
+
+
+@pytest.mark.parametrize("late_action", ["skip", "take_then_correct"])
+def test_runner_revalidates_group_after_initial_grouping_before_send(
+    kir120_system: tuple[KIR116Controller, KIR120Controller, KIR120Store, str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    late_action: str,
+) -> None:
+    kir116, _, store, _, _ = kir120_system
+    telegram_user_id = 701008
+    user_id = _prepare_planned_user(kir116, store, telegram_user_id)
+    now = datetime.now(UTC)
+    occurrence = store.today(user_id, now)[0]
+    original_validate = store.validate_claim
+    validation_calls = 0
+
+    def validate_with_late_action(delivery_id: str, validation_now: datetime) -> object:
+        nonlocal validation_calls
+        validation_calls += 1
+        if validation_calls == 2:
+            current = store.occurrence(user_id, occurrence.occurrence_id)
+            if late_action == "skip":
+                store.skip(
+                    user_id,
+                    occurrence.occurrence_id,
+                    current.revision,
+                    "race:skip",
+                    validation_now,
+                )
+            else:
+                taken = store.take(
+                    user_id,
+                    occurrence.occurrence_id,
+                    current.revision,
+                    "race:taken",
+                    validation_now,
+                )
+                store.correct_latest(
+                    user_id,
+                    occurrence.occurrence_id,
+                    taken.revision,
+                    "race:correction",
+                    validation_now,
+                )
+        return original_validate(delivery_id, validation_now)
+
+    monkeypatch.setattr(store, "validate_claim", validate_with_late_action)
+    bot = _RecordingBot()
+    delivered = asyncio.run(TelegramReminderRunner(store).run_once(bot, now=now))
+
+    assert validation_calls == 2
+    assert delivered == 0
+    assert bot.sent == []
+
+
+def test_runner_suppresses_group_when_claim_lease_expires_before_send(
+    kir120_system: tuple[KIR116Controller, KIR120Controller, KIR120Store, str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    kir116, _, store, database_url, schema = kir120_system
+    telegram_user_id = 701009
+    user_id = _prepare_planned_user(kir116, store, telegram_user_id)
+    now = datetime.now(UTC)
+    occurrence = store.today(user_id, now)[0]
+
+    class _ExpiredClock(datetime):
+        @classmethod
+        def now(cls, tz: object = None) -> datetime:
+            return now + timedelta(minutes=3)
+
+    monkeypatch.setattr(reminder_module, "datetime", _ExpiredClock)
+    bot = _RecordingBot()
+    delivered = asyncio.run(TelegramReminderRunner(store).run_once(bot, now=now))
+
+    assert delivered == 0
+    assert bot.sent == []
+    with _connect(database_url, schema) as conn:
+        assert conn.execute(
+            """
+            SELECT status
+            FROM reminder_delivery_attempts
+            WHERE occurrence_id = %s
+            """,
+            (occurrence.occurrence_id,),
+        ).fetchone() == ("cancelled",)
