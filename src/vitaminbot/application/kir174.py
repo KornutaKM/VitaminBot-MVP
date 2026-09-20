@@ -86,9 +86,7 @@ class KIR174Controller:
         scope_key = self.iron_scope_key(base_revision)
         supervision = self._store.iron_supervision(user_id, scope_key)
         profile = self._population_profile(profile_record)
-        exposure = ExposureContext(
-            under_medical_supervision=supervision.under_medical_supervision
-        )
+        exposure = ExposureContext(under_medical_supervision=supervision.under_medical_supervision)
         revision_material = (
             f"{base_revision}|profile:{profile_record.revision}|"
             f"iron:{scope_key}:{supervision.revision}"
@@ -201,14 +199,12 @@ class KIR174Controller:
         record = self._store.iron_supervision(user_id, f"iron:{scope_token}")
         if record.under_medical_supervision is None:
             text = (
-                "Контекст текущего приёма железа\n\n"
-                "Статус медицинского наблюдения не подтверждён."
+                "Контекст текущего приёма железа\n\nСтатус медицинского наблюдения не подтверждён."
             )
         else:
             answer = "да" if record.under_medical_supervision else "нет"
             text = (
-                "Контекст текущего приёма железа\n\n"
-                f"Приём под медицинским наблюдением: {answer}."
+                f"Контекст текущего приёма железа\n\nПриём под медицинским наблюдением: {answer}."
             )
         rows = (
             (
@@ -234,11 +230,7 @@ class KIR174Controller:
     ) -> Screen | None:
         bound = self.bound_context(telegram_user_id, base_revision=base_revision)
         for substance_key, reference_type in pairs:
-            exposure = (
-                bound.iron_exposure
-                if substance_key == "iron"
-                else ExposureContext()
-            )
+            exposure = bound.iron_exposure if substance_key == "iron" else ExposureContext()
             if self._all_candidates_blocked_by_non_user_gap(
                 substance_key, reference_type, exposure
             ):
@@ -430,9 +422,7 @@ class KIR174Controller:
                 if record.sex_applicability is None
                 else SexApplicability(record.sex_applicability)
             ),
-            life_stage=(
-                None if record.life_stage is None else LifeStage(record.life_stage)
-            ),
+            life_stage=(None if record.life_stage is None else LifeStage(record.life_stage)),
             physiological_condition=(
                 None
                 if record.physiological_condition is None
