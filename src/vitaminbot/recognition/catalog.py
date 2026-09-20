@@ -83,9 +83,7 @@ class VerificationState(StrEnum):
 
 
 class FreshnessState(StrEnum):
-    PROVIDER_TIMESTAMP_CURRENT_UNKNOWN_SEMANTICS = (
-        "provider_timestamp_current_unknown_semantics"
-    )
+    PROVIDER_TIMESTAMP_CURRENT_UNKNOWN_SEMANTICS = "provider_timestamp_current_unknown_semantics"
     PROVIDER_TIMESTAMP_MISSING = "provider_timestamp_missing"
     CATALOG_LABEL_CONFLICT = "catalog_label_conflict"
     POSSIBLE_OLD_PACKAGE = "possible_old_package"
@@ -298,9 +296,9 @@ class CatalogCandidate:
         for sourced_field in self.fields:
             if sourced_field.provider_key != self.provider_key:
                 raise CatalogContractError("field provider_key must match candidate provider")
-            if (
-                self.provider_record_id is not None
-                and sourced_field.provider_record_id not in (None, self.provider_record_id)
+            if self.provider_record_id is not None and sourced_field.provider_record_id not in (
+                None,
+                self.provider_record_id,
             ):
                 raise CatalogContractError(
                     "field provider_record_id must match candidate provider record"
@@ -403,9 +401,7 @@ class CatalogDiscoveryOutcome:
     def __post_init__(self) -> None:
         _require_nonblank(self.detail, "detail")
         if not self.nutrition_confirmation_required:
-            raise CatalogContractError(
-                "catalog discovery can never waive nutrition confirmation"
-            )
+            raise CatalogContractError("catalog discovery can never waive nutrition confirmation")
 
 
 def _gtin_type(value: str) -> IdentifierType:
@@ -823,12 +819,8 @@ class CatalogDiscoveryService:
                 detail="catalog candidate conflicts with confirmed current-label evidence",
             )
 
-        if (
-            result.result_state is ProviderResultState.PARTIAL_MATCH
-            or any(
-                self._candidate_requires_freshness_fallback(candidate)
-                for candidate in candidates
-            )
+        if result.result_state is ProviderResultState.PARTIAL_MATCH or any(
+            self._candidate_requires_freshness_fallback(candidate) for candidate in candidates
         ):
             return self._fallback_outcome(
                 request=request,
