@@ -172,7 +172,10 @@ def test_ruleset_contains_exactly_the_five_authorized_automatic_rules() -> None:
         SchedulingRuleId.IRON25_ZINC_AVOID_SAME_EVENT,
         SchedulingRuleId.CALCIUM_SPLIT_EVENT_PREFERENCE,
     }
-    assert all("OMEGA3" not in definition.rule_id.value for definition in DEFAULT_RULESET.definitions)
+    assert all(
+        "OMEGA3" not in definition.rule_id.value
+        for definition in DEFAULT_RULESET.definitions
+    )
 
 
 def test_vitamin_d_with_known_fat_slot_is_soft_preference_without_clock_time() -> None:
@@ -387,7 +390,10 @@ def test_fortified_food_iron_cannot_satisfy_supplemental_trigger() -> None:
     candidates = _rule_results(result, SchedulingRuleId.IRON25_ZINC_AVOID_SAME_EVENT)
 
     assert _matched(result, SchedulingRuleId.IRON25_ZINC_AVOID_SAME_EVENT) == []
-    assert any(candidate.reason is RuleReason.IRON_SOURCE_NOT_SUPPLEMENT for candidate in candidates)
+    assert any(
+        candidate.reason is RuleReason.IRON_SOURCE_NOT_SUPPLEMENT
+        for candidate in candidates
+    )
 
 
 def test_two_subthreshold_iron_products_are_not_silently_aggregated() -> None:
