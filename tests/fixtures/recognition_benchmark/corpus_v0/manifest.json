@@ -1,0 +1,61 @@
+{
+  "corpus_id": "vitaminbot-label-smoke",
+  "corpus_version": "0.1.0",
+  "frozen_at": "2026-09-20T10:00:00Z",
+  "annotation_protocol_version": "KIR-147/0.1",
+  "recognition_contract_revision": "1.0.0",
+  "source_policy_revision": "KIR-137/2026-09-19",
+  "provider_benchmark_eligible": false,
+  "known_limitations": [
+    "Smoke corpus only: validates KIR-117 harness, hashing, provenance and fail-closed scoring.",
+    "It is not the released A01-A30 KIR-147 corpus and MUST NOT be used as production-provider selection evidence.",
+    "Contains only two project-owned synthetic cases: clear Vitamin D IU and ambiguous magnesium compound mass."
+  ],
+  "cases": [
+    {
+      "case_id": "vitamin-d-iu-clear",
+      "artifact_id": "synthetic:vitamin-d-iu:v1",
+      "source_class": "synthetic_project_owned",
+      "rights_state": "project_owned_synthetic",
+      "external_provider_processing_allowed": true,
+      "image_path": "vitamin_d_iu.png.b64",
+      "image_encoding": "base64",
+      "image_sha256": "eab977c24ed7ae141239539506016700a7d3ace3fd94cf37f9b80fecf753877a",
+      "gold_path": "vitamin_d_iu.gold.json",
+      "gold_sha256": "e6ecc4489a58ecb1d651d000c312b960bb79f6dcf04267f03cbdf3b313d10f24",
+      "split": "smoke",
+      "quality_tags": ["clear", "synthetic"],
+      "adversarial_tags": ["vitamin_d_iu", "no_mass_conversion"],
+      "field_roles": {
+        "product_name": "product_name",
+        "serving_size": "serving_size",
+        "row:d3:name": "ingredient_or_nutrient_name",
+        "row:d3:quantity": "quantity",
+        "row:d3:unit": "unit",
+        "row:d3:form": "chemical_form"
+      }
+    },
+    {
+      "case_id": "magnesium-compound-ambiguous",
+      "artifact_id": "synthetic:magnesium-citrate-ambiguous:v1",
+      "source_class": "synthetic_project_owned",
+      "rights_state": "project_owned_synthetic",
+      "external_provider_processing_allowed": true,
+      "image_path": "ambiguous_magnesium.png.b64",
+      "image_encoding": "base64",
+      "image_sha256": "99847ada6f48ae4d81ef9535b702ad5605d72b02dbf4c0b340fbcd4ffd033b8e",
+      "gold_path": "ambiguous_magnesium.gold.json",
+      "gold_sha256": "33c18a456213225654077e2f8b7d5847aa35f298ef61a6742783a5fc6edf0cb9",
+      "split": "smoke",
+      "quality_tags": ["clear", "synthetic"],
+      "adversarial_tags": ["compound_vs_elemental", "must_abstain"],
+      "field_roles": {
+        "product_name": "product_name",
+        "serving_size": "serving_size",
+        "row:mc:name": "ingredient_or_nutrient_name",
+        "row:mc:quantity": "quantity",
+        "row:mc:unit": "unit"
+      }
+    }
+  ]
+}

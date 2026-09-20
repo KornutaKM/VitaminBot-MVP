@@ -1,0 +1,84 @@
+{
+  "schema_version": "1.0.0",
+  "extraction_id": "gold:smoke:ambiguous-magnesium",
+  "acquisition_method": "photo",
+  "source_assets": [
+    {
+      "asset_id": "img:1",
+      "source_kind": "label_image",
+      "reference": "benchmark://ambiguous-magnesium"
+    }
+  ],
+  "raw_label_text": "Product: Magnesium Citrate\nServing Size: 1 tablet\nMagnesium Citrate 500 mg",
+  "product_identity": {
+    "product_name": {
+      "field_id": "product_name",
+      "source_kind": "label_image",
+      "presence_state": "present",
+      "raw_text": "Magnesium Citrate",
+      "normalized_candidate": "Magnesium Citrate",
+      "source_regions": [
+        {"asset_id": "img:1", "region_id": "r:product", "bbox": [0.02, 0.05, 0.48, 0.22]}
+      ],
+      "confidence": {"band": "high"}
+    }
+  },
+  "serving": {
+    "serving_size": {
+      "field_id": "serving_size",
+      "source_kind": "label_image",
+      "presence_state": "present",
+      "raw_text": "1 tablet",
+      "normalized_candidate": "1 tablet",
+      "source_regions": [
+        {"asset_id": "img:1", "region_id": "r:serving", "bbox": [0.02, 0.28, 0.41, 0.45]}
+      ],
+      "confidence": {"band": "high"}
+    }
+  },
+  "rows": [
+    {
+      "row_id": "row:magnesium-citrate",
+      "row_raw_text": "Magnesium Citrate 500 mg",
+      "printed_name": {
+        "field_id": "row:mc:name",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "Magnesium Citrate",
+        "normalized_candidate": "magnesium citrate",
+        "source_regions": [
+          {"asset_id": "img:1", "region_id": "r:mc:name", "bbox": [0.02, 0.52, 0.34, 0.70]}
+        ],
+        "confidence": {"band": "high"}
+      },
+      "quantity": {
+        "field_id": "row:mc:quantity",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "500",
+        "normalized_candidate": "500",
+        "source_regions": [
+          {"asset_id": "img:1", "region_id": "r:mc:quantity", "bbox": [0.36, 0.52, 0.44, 0.70]}
+        ],
+        "confidence": {"band": "high"}
+      },
+      "unit": {
+        "field_id": "row:mc:unit",
+        "source_kind": "label_image",
+        "presence_state": "present",
+        "raw_text": "mg",
+        "normalized_candidate": "mg",
+        "source_regions": [
+          {"asset_id": "img:1", "region_id": "r:mc:unit", "bbox": [0.45, 0.52, 0.51, 0.70]}
+        ],
+        "confidence": {"band": "high"}
+      },
+      "ambiguity_codes": ["compound_vs_elemental_unclear"],
+      "semantic_state": "unresolved",
+      "downstream_eligibility": "blocked_unresolved"
+    }
+  ],
+  "record_ambiguities": ["compound_vs_elemental_unclear"],
+  "record_state": "user_resolution_required",
+  "confirmation_revision": 0
+}
