@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from typing import Final
 
 from vitaminbot.application.kir116 import Button, Screen
@@ -408,7 +407,6 @@ _PREFIXES: Final[tuple[tuple[str, str], ...]] = (
 )
 
 
-@dataclass(frozen=True, slots=True)
 class RussianFirstPresenter:
     """Presentation-only Russian projection for non-governed Telegram shell copy.
 
