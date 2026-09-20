@@ -390,8 +390,7 @@ def test_retry_duplicate_is_suppressed_but_distinct_products_are_not_deduplicate
     assert aggregate.known_total == Decimal("200000")
     assert len(aggregate.contributors) == 2
     assert any(
-        flag.kind is DuplicateFlagKind.EXACT_REPEAT_SUPPRESSED
-        for flag in result.duplicate_flags
+        flag.kind is DuplicateFlagKind.EXACT_REPEAT_SUPPRESSED for flag in result.duplicate_flags
     )
 
 
@@ -571,12 +570,9 @@ def test_fortified_food_iron_cannot_trigger_supplemental_iron_zinc_rule() -> Non
     result = _evaluate(iron, zinc)
     candidates = _for_rule(result, SchedulingRuleId.IRON25_ZINC_AVOID_SAME_EVENT)
 
-    assert not any(
-        candidate.status is RuleStatus.MATCHED_PREFERENCE for candidate in candidates
-    )
+    assert not any(candidate.status is RuleStatus.MATCHED_PREFERENCE for candidate in candidates)
     assert any(
-        candidate.reason is RuleReason.IRON_SOURCE_NOT_SUPPLEMENT
-        for candidate in candidates
+        candidate.reason is RuleReason.IRON_SOURCE_NOT_SUPPLEMENT for candidate in candidates
     )
 
 
@@ -607,10 +603,7 @@ def test_calcium_form_applicability_does_not_leak_across_forms() -> None:
     by_item = {candidate.item_ids[0]: candidate for candidate in candidates}
 
     assert by_item["carbonate"].status is RuleStatus.MATCHED_PREFERENCE
-    assert (
-        by_item["carbonate"].meal_context_preference
-        is MealContextPreference.WITH_MEAL
-    )
+    assert by_item["carbonate"].meal_context_preference is MealContextPreference.WITH_MEAL
     assert by_item["citrate"].reason is RuleReason.CALCIUM_FORM_NOT_CARBONATE
     assert by_item["unknown"].status is RuleStatus.INSUFFICIENT_EVIDENCE
     assert by_item["unknown"].reason is RuleReason.CALCIUM_FORM_REQUIRED
@@ -693,13 +686,8 @@ def test_calcium_split_rearranges_existing_units_but_never_creates_dose() -> Non
         SchedulingRuleId.CALCIUM_SPLIT_EVENT_PREFERENCE,
     )
 
-    assert not any(
-        candidate.status is RuleStatus.MATCHED_PREFERENCE for candidate in one
-    )
-    assert any(
-        candidate.reason is RuleReason.INTACT_UNITS_NOT_REARRANGEABLE
-        for candidate in one
-    )
+    assert not any(candidate.status is RuleStatus.MATCHED_PREFERENCE for candidate in one)
+    assert any(candidate.reason is RuleReason.INTACT_UNITS_NOT_REARRANGEABLE for candidate in one)
 
     matched = next(
         candidate for candidate in two if candidate.status is RuleStatus.MATCHED_PREFERENCE
