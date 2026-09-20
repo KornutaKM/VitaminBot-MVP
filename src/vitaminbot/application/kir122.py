@@ -7,6 +7,7 @@ from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
 from vitaminbot.application.kir116 import Button, Screen
+from vitaminbot.application.kir174 import BoundApplicabilityContext, KIR174Controller
 from vitaminbot.application.safety_envelope import (
     SafetyComparisonContext,
     SafetyContributor,
@@ -126,9 +127,11 @@ class KIR122Controller:
         *,
         base_store: KIR116Store,
         store: KIR122Store,
+        applicability_controller: KIR174Controller | None = None,
     ) -> None:
         self._base_store = base_store
         self._store = store
+        self._applicability_controller = applicability_controller
 
     def composition(self, telegram_user_id: int) -> Screen:
         user_id = self._base_store.ensure_user(telegram_user_id)
@@ -322,13 +325,33 @@ class KIR122Controller:
     def safety_envelopes(self, telegram_user_id: int) -> tuple[SafetyEnvelope, ...]:
         user_id = self._base_store.ensure_user(telegram_user_id)
         view = self._build_view(user_id)
-        return self._reference_envelopes(view) + (self._scope_envelope(view),)
+        bound = self._bound_applicability(telegram_user_id, view.snapshot.context_revision)
+        context_revision = (
+            view.snapshot.context_revision if bound is None else bound.context_revision
+        )
+        return self._reference_envelopes(view, bound) + (
+            self._scope_envelope(view, context_revision=context_revision),
+        )
 
     def safety(self, telegram_user_id: int) -> Screen:
         user_id = self._base_store.ensure_user(telegram_user_id)
         view = self._build_view(user_id)
-        envelopes = self._reference_envelopes(view) + (self._scope_envelope(view),)
-        short_revision = self._short_revision(view.snapshot.context_revision)
+        if self._applicability_controller is not None:
+            prompt = self._applicability_controller.prompt_for_pairs(
+                telegram_user_id,
+                pairs=self._reference_pairs(view),
+                base_revision=view.snapshot.context_revision,
+            )
+            if prompt is not None:
+                return prompt
+        bound = self._bound_applicability(telegram_user_id, view.snapshot.context_revision)
+        context_revision = (
+            view.snapshot.context_revision if bound is None else bound.context_revision
+        )
+        envelopes = self._reference_envelopes(view, bound) + (
+            self._scope_envelope(view, context_revision=context_revision),
+        )
+        short_revision = self._short_revision(context_revision)
         return Screen(
             text=render_safety_envelopes(envelopes),
             rows=(
@@ -747,7 +770,11 @@ class KIR122Controller:
             return None
 
     @staticmethod
-    def _scope_envelope(view: VerticalView) -> SafetyEnvelope:
+    def _scope_envelope(
+        view: VerticalView,
+        *,
+        context_revision: str | None = None,
+    ) -> SafetyEnvelope:
         return SafetyEnvelope(
             subject_name="Границы персональной оценки",
             status=SafetyStatus.CANNOT_ASSESS,
@@ -792,10 +819,14 @@ class KIR122Controller:
             comparison_context=None,
             contributors=(),
             evidence_state=SafetyEvidenceState.MISSING,
-            context_revision=view.snapshot.context_revision,
+            context_revision=context_revision or view.snapshot.context_revision,
         )
 
-    def _reference_envelopes(self, view: VerticalView) -> tuple[SafetyEnvelope, ...]:
+    def _reference_envelopes(
+        self,
+        view: VerticalView,
+        bound: BoundApplicabilityContext | None = None,
+    ) -> tuple[SafetyEnvelope, ...]:
         rows: list[SafetyEnvelope] = []
         names = {item.instance_id: item.name for item in view.snapshot.supplements}
         for aggregate in view.aggregation.aggregates:
@@ -846,14 +877,25 @@ class KIR122Controller:
             )
 
             for substance_key, reference_type in pairs:
+                context_revision = (
+                    view.snapshot.context_revision
+                    if bound is None
+                    else bound.context_revision
+                )
+                profile = PopulationProfile() if bound is None else bound.profile
+                exposure = (
+                    ExposureContext()
+                    if bound is None or substance_key != "iron"
+                    else bound.iron_exposure
+                )
                 lookup = lookup_reference(
                     EU_EFSA_REFERENCE_DATASET,
                     ReferenceQuery(
                         substance_key=substance_key,
                         reference_type=reference_type,
-                        profile=PopulationProfile(),
-                        exposure=ExposureContext(),
-                        context_revision=view.snapshot.context_revision,
+                        profile=profile,
+                        exposure=exposure,
+                        context_revision=context_revision,
                     ),
                 )
                 comparison_context = SafetyComparisonContext(
@@ -907,7 +949,7 @@ class KIR122Controller:
                             comparison_context=comparison_context,
                             contributors=contributors,
                             evidence_state=evidence_state,
-                            context_revision=view.snapshot.context_revision,
+                            context_revision=context_revision,
                         )
                     )
                     continue
@@ -972,7 +1014,7 @@ class KIR122Controller:
                             comparison_context=comparison_context,
                             contributors=contributors,
                             evidence_state=SafetyEvidenceState.SUPPORTED,
-                            context_revision=view.snapshot.context_revision,
+                            context_revision=context_revision,
                         )
                     )
                     continue
@@ -1010,7 +1052,7 @@ class KIR122Controller:
                             comparison_context=comparison_context,
                             contributors=contributors,
                             evidence_state=SafetyEvidenceState.AMBIGUOUS,
-                            context_revision=view.snapshot.context_revision,
+                            context_revision=context_revision,
                         )
                     )
                     continue
@@ -1018,7 +1060,7 @@ class KIR122Controller:
                 comparison = compare_amount_to_reference(
                     amount,
                     lookup,
-                    context_revision=view.snapshot.context_revision,
+                    context_revision=context_revision,
                 )
                 relation = None if comparison.relation is None else comparison.relation.value
                 if relation is None:
@@ -1048,7 +1090,7 @@ class KIR122Controller:
                             comparison_context=comparison_context,
                             contributors=contributors,
                             evidence_state=SafetyEvidenceState.AMBIGUOUS,
-                            context_revision=view.snapshot.context_revision,
+                            context_revision=context_revision,
                         )
                     )
                     continue
@@ -1102,10 +1144,39 @@ class KIR122Controller:
                         comparison_context=comparison_context,
                         contributors=contributors,
                         evidence_state=SafetyEvidenceState.SUPPORTED,
-                        context_revision=view.snapshot.context_revision,
+                        context_revision=context_revision,
                     )
                 )
         return tuple(rows)
+
+    def _bound_applicability(
+        self,
+        telegram_user_id: int,
+        base_revision: str,
+    ) -> BoundApplicabilityContext | None:
+        if self._applicability_controller is None:
+            return None
+        return self._applicability_controller.bound_context(
+            telegram_user_id,
+            base_revision=base_revision,
+        )
+
+    @staticmethod
+    def _reference_pairs(
+        view: VerticalView,
+    ) -> tuple[tuple[str, ReferenceType], ...]:
+        pairs: set[tuple[str, ReferenceType]] = set()
+        for aggregate in view.aggregation.aggregates:
+            for record in EU_EFSA_REFERENCE_DATASET.records:
+                if (
+                    record.lifecycle is ReferenceLifecycle.ACTIVE
+                    and record.subject_kind is aggregate.key.subject_kind
+                    and record.subject_id == aggregate.key.subject_id
+                    and record.amount_basis is aggregate.key.amount_basis
+                    and record.equivalence_basis == aggregate.key.equivalence_basis
+                ):
+                    pairs.add((record.substance_key, record.reference_type))
+        return tuple(sorted(pairs, key=lambda item: (item[0], item[1].value)))
 
     @staticmethod
     def _aggregate_amount(aggregate: DailyAggregate) -> ComputedAmount | None:
@@ -1225,9 +1296,13 @@ class KIR122Controller:
     def _reference_sources(self, telegram_user_id: int, expected_revision: str) -> Screen:
         user_id = self._base_store.ensure_user(telegram_user_id)
         view = self._build_view(user_id)
-        if self._short_revision(view.snapshot.context_revision) != expected_revision:
+        bound = self._bound_applicability(telegram_user_id, view.snapshot.context_revision)
+        context_revision = (
+            view.snapshot.context_revision if bound is None else bound.context_revision
+        )
+        if self._short_revision(context_revision) != expected_revision:
             return self._stale_screen()
-        envelopes = self._reference_envelopes(view)
+        envelopes = self._reference_envelopes(view, bound)
         sources = {
             (source.title, source.source_url, source.version)
             for envelope in envelopes
