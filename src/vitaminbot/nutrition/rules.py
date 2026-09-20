@@ -12,7 +12,6 @@ from vitaminbot.domain import (
     QuantityBasis,
     SubjectKind,
     Unit,
-    UnitDimension,
 )
 from vitaminbot.nutrition.aggregation import (
     AggregateKey,
@@ -1112,11 +1111,12 @@ def _pair_candidates(
     pairs: dict[tuple[str, str], tuple[SchedulingItem, SchedulingItem]] = {}
     for first in first_items:
         for second in second_items:
-            key = tuple(sorted((first.item_id, second.item_id)))
-            if len(set(key)) == 1:
-                pairs[key] = (first, second)
-            else:
-                pairs[key] = (first, second)
+            key = (
+                (first.item_id, second.item_id)
+                if first.item_id <= second.item_id
+                else (second.item_id, first.item_id)
+            )
+            pairs[key] = (first, second)
     return tuple(pairs[key] for key in sorted(pairs))
 
 
