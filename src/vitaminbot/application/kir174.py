@@ -145,7 +145,10 @@ class KIR174Controller:
                 "Контекст применимости обновлён. "
                 "Справочное значение будет пересчитано из текущего подтверждённого контекста."
             ),
-            rows=((Button("Вернуться к справочным значениям", "k122safe"),),),
+            rows=(
+                (Button("Вернуться к справочным значениям", "k122safe"),),
+                (Button("Карточки нутриентов", "k146list"),),
+            ),
         )
 
     def profile_screen(self, telegram_user_id: int) -> Screen:
@@ -290,7 +293,10 @@ class KIR174Controller:
                         "Ничего не сохранено. Применимость остаётся неизвестной, "
                         "поэтому вывод остаётся недоступным."
                     ),
-                    rows=((Button("Назад", "k122safe"),),),
+                    rows=(
+                        (Button("Назад к справочным значениям", "k122safe"),),
+                        (Button("Карточки нутриентов", "k146list"),),
+                    ),
                 )
             if parts[0] == "k174age" and len(parts) == 3:
                 unit = {"m": "months", "y": "years"}[parts[1]]
@@ -315,7 +321,10 @@ class KIR174Controller:
                 )
                 return Screen(
                     text="Контекст применимости обновлён.",
-                    rows=((Button("Назад к справочным значениям", "k122safe"),),),
+                    rows=(
+                        (Button("Назад к справочным значениям", "k122safe"),),
+                        (Button("Карточки нутриентов", "k146list"),),
+                    ),
                 )
             if parts[0] == "k174med" and len(parts) == 4:
                 scope_key = f"iron:{parts[1]}"
