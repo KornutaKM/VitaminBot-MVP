@@ -103,7 +103,7 @@ def _render_group(group: list[DeliveryClaim]) -> str:
     for claim in group:
         lines.append(
             f"• {claim.name}: {_display_quantity(claim.quantity)} "
-            f"{_display_unit_label(claim.unit_label)}"
+            f"{_display_unit_label(claim.unit_label, claim.quantity)}"
         )
     lines.extend(
         [
@@ -152,17 +152,46 @@ def _render_keyboard(group: list[DeliveryClaim]) -> InlineKeyboardMarkup:
 
 
 def _display_quantity(value: Decimal) -> str:
-    return format(value, "f").rstrip("0").rstrip(".") if "." in format(value, "f") else str(value)
+    rendered = format(value, "f")
+    if "." in rendered:
+        rendered = rendered.rstrip("0").rstrip(".")
+    return rendered.replace(".", ",")
 
 
-def _display_unit_label(value: str) -> str:
-    return {
-        "capsule": "капсула",
-        "tablet": "таблетка",
-        "softgel": "мягкая капсула",
-        "scoop": "мерная ложка",
-        "drop": "капля",
-    }.get(value, value)
+_RU_UNIT_FORMS: dict[str, tuple[str, str, str, str]] = {
+    "capsule": ("капсула", "капсулы", "капсул", "капсулы"),
+    "tablet": ("таблетка", "таблетки", "таблеток", "таблетки"),
+    "softgel": (
+        "мягкая капсула",
+        "мягкие капсулы",
+        "мягких капсул",
+        "мягкой капсулы",
+    ),
+    "scoop": ("мерная ложка", "мерные ложки", "мерных ложек", "мерной ложки"),
+    "drop": ("капля", "капли", "капель", "капли"),
+}
+
+
+def _display_unit_label(value: str, quantity: Decimal) -> str:
+    forms = _RU_UNIT_FORMS.get(value)
+    if forms is None:
+        return value
+
+    singular, few, many, fractional = forms
+    if quantity != quantity.to_integral_value():
+        return fractional
+
+    integer = abs(int(quantity))
+    last_two = integer % 100
+    if 11 <= last_two <= 14:
+        return many
+
+    last = integer % 10
+    if last == 1:
+        return singular
+    if 2 <= last <= 4:
+        return few
+    return many
 
 
 def _utc_now(value: datetime | None) -> datetime:
