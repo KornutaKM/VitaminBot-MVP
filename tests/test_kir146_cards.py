@@ -648,12 +648,90 @@ def test_sources_view_binds_exact_record_source_version_and_locator() -> None:
     assert ul.source_locator is not None
 
     sources = renderer.sources_screen(render)
-    assert "Approved claims:" in sources.text
-    assert "b6.identity.v1 [identity] → ODS-B6" in sources.text
-    assert ul.record_id in sources.text
+    assert "Утверждения и ограничения:" in sources.text
+    assert "Источники утверждений:" in sources.text
+    assert "b6.identity.v1" not in sources.text
+    assert ul.record_id not in sources.text
+    assert "context_revision=" not in sources.text
     assert ul.source_url in sources.text
     assert ul.source_version in sources.text
     assert ul.source_locator in sources.text
+
+
+def test_russian_reference_source_and_list_shells_hide_internal_jargon() -> None:
+    renderer = NutrientCardRenderer()
+    render = renderer.render_current(
+        "vitamin_b6",
+        _context("ctx:russian-shell-jargon", exposure=_total_exposure()),
+    )
+    assert render.binding is not None
+
+    listing = KIR146Controller(renderer).list_cards()
+    references = renderer.reference_values_screen(render)
+    sources = renderer.sources_screen(render)
+
+    authoritative_values = [
+        *(claim.plain_text for claim in render.binding.claims),
+        *(limitation for claim in render.binding.claims for limitation in claim.limitations),
+        *(
+            value
+            for source in render.binding.claim_sources
+            for value in (
+                source.title,
+                source.authority,
+                source.jurisdiction_scope,
+                source.source_version,
+                source.source_url,
+            )
+        ),
+        *(
+            value
+            for snapshot in render.binding.references
+            for value in (
+                snapshot.display_line,
+                snapshot.source_title,
+                snapshot.source_version,
+                snapshot.source_locator,
+                snapshot.source_url,
+            )
+            if value is not None
+        ),
+    ]
+    forbidden = (
+        "governed",
+        "record/context",
+        "safety records",
+        "adult/default",
+        "identifiers",
+        "specific scope",
+    )
+    for screen in (listing, references, sources):
+        shell_text = screen.text
+        for value in authoritative_values:
+            shell_text = shell_text.replace(value, "")
+        lowered = shell_text.lower()
+        assert all(token not in lowered for token in forbidden)
+
+    labels = [button.label for row in listing.rows for button in row]
+    assert "DHA (отдельная область применения)" in labels
+
+    for claim in render.binding.claims:
+        assert claim.plain_text.encode("utf-8") in sources.text.encode("utf-8")
+    for source in render.binding.claim_sources:
+        assert source.title in sources.text
+        assert source.authority in sources.text
+
+    matched_references = tuple(
+        snapshot for snapshot in render.binding.references if snapshot.record_id is not None
+    )
+    assert matched_references
+    for snapshot in matched_references:
+        if snapshot.source_title is not None:
+            assert snapshot.source_title in references.text
+            assert snapshot.source_title in sources.text
+        if snapshot.source_url is not None:
+            assert snapshot.source_url in references.text
+            assert snapshot.source_url in sources.text
 
 
 def test_missing_profile_applicability_is_explicitly_withheld() -> None:
