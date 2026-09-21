@@ -161,6 +161,18 @@ def test_supplement_list_localizes_only_structural_state_suffix() -> None:
     assert lines[2] == "1. Formula — plan set — план настроен"
 
 
+def test_supplement_open_label_uses_callback_role_not_dynamic_label_text() -> None:
+    projected = project_v02_screen(
+        Screen(
+            text="My supplements — 1\n\n1. Plan — plan set",
+            rows=((Button("Open Plan", "o:0123456789abcdef:1"),),),
+        ),
+        surface="supplements",
+    )
+    assert "1. Plan — план настроен" in projected.text
+    assert _labels(projected)[0] == "Открыть Plan"
+
+
 def test_today_shell_preserves_occurrence_actions_and_has_no_taken_all() -> None:
     raw = Screen(
         text=(
