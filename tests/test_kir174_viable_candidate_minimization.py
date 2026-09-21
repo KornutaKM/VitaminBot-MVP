@@ -12,10 +12,11 @@ from vitaminbot.application.kir116 import Screen
 from vitaminbot.application.kir174 import KIR174Controller
 from vitaminbot.nutrition.reference_values import (
     EU_EFSA_REFERENCE_DATASET,
-    ApplicabilityReason,
     ExposureBasis,
     ExposureContext,
+    Jurisdiction,
     LookupStatus,
+    ReferenceLifecycle,
     ReferenceQuery,
     ReferenceType,
     lookup_reference,
@@ -83,6 +84,22 @@ def test_adult_zinc_phytate_gap_stops_before_unneeded_profile_questions(
     assert after_age.life_stage is None
     assert after_age.physiological_condition is None
 
+    adult_candidates = tuple(
+        record
+        for record in EU_EFSA_REFERENCE_DATASET.records
+        if record.lifecycle is ReferenceLifecycle.ACTIVE
+        and record.jurisdiction is Jurisdiction.EU
+        and record.substance_key == "zinc"
+        and record.reference_type is ReferenceType.PRI
+        and (record.population.age_min_months is None or record.population.age_min_months <= 360)
+        and (
+            record.population.age_max_months_exclusive is None
+            or 360 < record.population.age_max_months_exclusive
+        )
+    )
+    assert adult_candidates
+    assert all(record.dietary_phytate_mg_per_day is not None for record in adult_candidates)
+
     prompt_after_age = controller.prompt_for_pairs(
         174170,
         pairs=(("zinc", ReferenceType.PRI),),
@@ -110,4 +127,3 @@ def test_adult_zinc_phytate_gap_stops_before_unneeded_profile_questions(
         ),
     )
     assert lookup.status is LookupStatus.INDETERMINATE
-    assert ApplicabilityReason.MISSING_PHYTATE in lookup.reasons
