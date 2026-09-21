@@ -128,6 +128,39 @@ def test_structured_placeholders_localize_without_rewriting_dynamic_status_token
     assert "Язык интерфейса: Не настроен" in profile.text
 
 
+def test_dynamic_add_prefixes_and_residual_copy_preserve_identity_substrings() -> None:
+    serving = project_v02_screen(
+        Screen(text="Serving — Serving — Formula"),
+        surface="add",
+    )
+    assert serving.text == "Порция — Serving — Formula"
+
+    current_name = project_v02_screen(
+        Screen(text="Current name: Current name: Formula"),
+        surface="add",
+    )
+    assert current_name.text == "Текущее название: Current name: Formula"
+
+    edit_name = project_v02_screen(
+        Screen(text="Edit name — Name updated.\n\nSend the new tracked supplement name."),
+        surface="add",
+    )
+    assert edit_name.text.splitlines()[0] == "Edit name — Name updated."
+
+
+def test_supplement_list_localizes_only_structural_state_suffix() -> None:
+    projected = project_v02_screen(
+        Screen(
+            text="My supplements — 1\n\n1. Formula — plan set — plan set",
+            rows=((Button("Open Formula — plan set", "o:0123456789abcdef:1"),),),
+        ),
+        surface="supplements",
+    )
+    lines = projected.text.splitlines()
+    assert lines[0] == "Мои добавки — 1"
+    assert lines[2] == "1. Formula — plan set — план настроен"
+
+
 def test_today_shell_preserves_occurrence_actions_and_has_no_taken_all() -> None:
     raw = Screen(
         text=(
