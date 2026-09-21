@@ -124,7 +124,6 @@ class KIR174Controller:
     def has_pending_text(self, telegram_user_id: int) -> bool:
         return telegram_user_id in self._pending_age
 
-
     def text(
         self,
         telegram_user_id: int,
@@ -166,7 +165,6 @@ class KIR174Controller:
                 (Button("Карточки нутриентов", "k146list"),),
             ),
         )
-
 
     def profile_screen(self, telegram_user_id: int) -> Screen:
         user_id = self._base_store.ensure_user(telegram_user_id)
@@ -245,7 +243,6 @@ class KIR174Controller:
         rows.append((Button("Назад", "k122safe"),))
         return Screen(text=text, rows=tuple(rows))
 
-
     def prompt_for_pairs(
         self,
         telegram_user_id: int,
@@ -281,7 +278,6 @@ class KIR174Controller:
             if prompt is not None:
                 return prompt
         return None
-
 
     def prompt_for_card(self, telegram_user_id: int, render: CardRender) -> Screen | None:
         if render.binding is None:

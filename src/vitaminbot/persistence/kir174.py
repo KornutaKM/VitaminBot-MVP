@@ -147,9 +147,6 @@ class KIR174Store:
             revision=int(row["revision"]),
         )
 
-
-
-
     def save_age(
         self,
         user_id: UUID,
@@ -190,7 +187,6 @@ class KIR174Store:
                 completed_years=completed_years,
             )
             return self._locked_profile(conn, user_id)
-
 
     def save_profile_fact(
         self,
@@ -335,7 +331,6 @@ class KIR174Store:
                 (user_id, scope_key),
             )
         return self.iron_supervision(user_id, scope_key)
-
 
     @staticmethod
     def _write_profile(

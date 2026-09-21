@@ -577,6 +577,8 @@ def test_profile_fact_callbacks_are_revision_bound(
 
     assert "Старое действие не применено" in result.text
     assert store.profile(user_id).sex_applicability == "male"
+
+
 def test_child_unisex_match_stops_before_sex_or_life_stage_question(
     applicability_stack: tuple[str, KIR116Store, KIR174Store, KIR174Controller, UUID],
 ) -> None:
@@ -720,7 +722,10 @@ def test_iron_supervision_delete_restores_unknown_and_advances_scope_revision(
     assert after.iron_exposure.under_medical_supervision is None
     assert after.iron_scope_revision == before.iron_scope_revision + 1
     assert after.context_revision != before.context_revision
-    assert store.iron_supervision(user_id, before.iron_scope_key).revision == after.iron_scope_revision
+    assert (
+        store.iron_supervision(user_id, before.iron_scope_key).revision
+        == after.iron_scope_revision
+    )
 
 
 def test_age_precision_contract_requires_review_for_new_non_year_boundary(
