@@ -355,6 +355,9 @@ def _dynamic_identity_line_indices(
     if surface == "totals":
         protected.update(index for index, line in enumerate(lines) if line.startswith("  • "))
 
+    if surface == "rules":
+        protected.update(index for index, line in enumerate(lines) if line.startswith("• "))
+
     if surface == "why" and lines and lines[0].startswith("Why this time? — "):
         protected.add(0)
 
