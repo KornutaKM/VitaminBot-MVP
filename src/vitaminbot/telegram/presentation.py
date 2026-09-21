@@ -92,13 +92,6 @@ _PHRASE_REPLACEMENTS = (
         "это не вывод о безопасности и не рекомендация по дозе.",
     ),
     (
-        "Status: Confirmed manual entry",
-        "Статус: подтверждённый ручной ввод",
-    ),
-    ("Label serving:", "Порция по этикетке:"),
-    ("Your plan:", "Ваш план:"),
-    ("Not set", "Не настроен"),
-    (
         "Product facts and your plan are stored separately.",
         "Факты о продукте и ваш план хранятся отдельно.",
     ),
@@ -218,20 +211,79 @@ _PHRASE_REPLACEMENTS = (
         "Pending input cancelled. No confirmed supplement or plan was changed.",
         "Ввод отменён. Подтверждённая добавка и план не изменены.",
     ),
-    ("Timezone:", "Часовой пояс:"),
-    ("Locale:", "Язык интерфейса:"),
-    ("Morning —", "Утро —"),
-    ("Day —", "День —"),
-    ("Evening —", "Вечер —"),
-    ("[pending]", "[ожидает]"),
-    ("[taken]", "[принято]"),
-    ("[skipped]", "[пропущено]"),
-    ("[needs_review]", "[нужна проверка]"),
-    ("entered in error", "исправлено как ошибочная запись"),
-    ("taken", "принято"),
-    ("skip", "пропущено"),
-    ("later", "позже"),
 )
+
+_STRUCTURED_BRACKET_STATUSES = {
+    "[pending]": "[ожидает]",
+    "[taken]": "[принято]",
+    "[skipped]": "[пропущено]",
+    "[needs_review]": "[нужна проверка]",
+}
+_STRUCTURED_HISTORY_STATUSES = {
+    "taken": "принято",
+    "skip": "пропущено",
+    "later": "позже",
+    "entered in error": "исправлено как ошибочная запись",
+}
+_PROFILE_FIELD_PREFIXES = {
+    "Timezone: ": "Часовой пояс: ",
+    "Locale: ": "Язык интерфейса: ",
+}
+_ROUTINE_BUCKET_LABELS = {
+    "Morning": "Утро",
+    "Day": "День",
+    "Evening": "Вечер",
+}
+
+
+def _localize_structured_shell_line(
+    line: str,
+    *,
+    line_index: int,
+    profile_screen: bool,
+    supplement_detail_screen: bool,
+    today_screen: bool,
+) -> str:
+    if profile_screen:
+        for source, target in _PROFILE_FIELD_PREFIXES.items():
+            if line.startswith(source):
+                value = line[len(source) :]
+                if value == "Not set":
+                    value = "Не настроен"
+                return target + value
+
+    if supplement_detail_screen and line_index > 0:
+        if line == "Status: Confirmed manual entry":
+            return "Статус: подтверждённый ручной ввод"
+        if line.startswith("Label serving: "):
+            return "Порция по этикетке: " + line.removeprefix("Label serving: ")
+        if line == "Your plan: Not set":
+            return "Ваш план: Не настроен"
+        for source, target in _ROUTINE_BUCKET_LABELS.items():
+            prefix = f"Your plan: {source} — "
+            if line.startswith(prefix):
+                return f"Ваш план: {target} — " + line[len(prefix) :]
+
+    if today_screen:
+        for source, target in _ROUTINE_BUCKET_LABELS.items():
+            prefix = f"• {source} — "
+            if line.startswith(prefix):
+                return f"• {target} — " + line[len(prefix) :]
+
+    return line
+
+
+def _localize_structured_status_line(line: str) -> str:
+    if not line.startswith("• "):
+        return line
+    for source, target in _STRUCTURED_BRACKET_STATUSES.items():
+        if line.endswith(source):
+            return line[: -len(source)] + target
+    for source, target in _STRUCTURED_HISTORY_STATUSES.items():
+        suffix = f" — {source}"
+        if line.endswith(suffix):
+            return line[: -len(suffix)] + f" — {target}"
+    return line
 
 
 def localize_operational_screen(screen: Screen) -> Screen:
@@ -240,7 +292,24 @@ def localize_operational_screen(screen: Screen) -> Screen:
     Scientific KIR-146 card prose is intentionally not passed through this translator.
     """
     lines = screen.text.splitlines()
-    translated_lines = [_LINE_REPLACEMENTS.get(line, line) for line in lines]
+    profile_screen = "Profile" in lines
+    supplement_detail_screen = "Status: Confirmed manual entry" in lines
+    today_screen = "Today" in lines
+    translated_lines = [
+        _localize_structured_status_line(
+            _LINE_REPLACEMENTS.get(
+                localized_line := _localize_structured_shell_line(
+                    line,
+                    line_index=line_index,
+                    profile_screen=profile_screen,
+                    supplement_detail_screen=supplement_detail_screen,
+                    today_screen=today_screen,
+                ),
+                localized_line,
+            )
+        )
+        for line_index, line in enumerate(lines)
+    ]
     text = "\n".join(translated_lines)
     for source, target in _PHRASE_REPLACEMENTS:
         text = text.replace(source, target)
@@ -282,7 +351,7 @@ def _button_label(button: Button) -> str:
         "Edit locale": "Изменить язык",
         "Open profile": "Открыть профиль",
         "Open Plan": "Открыть план",
-        "Taken": "Принято",
+        "Taken": "Принял(а)",
         "Later": "Позже",
         "Skip": "Пропустить",
         "Why?": "Почему?",
@@ -302,3 +371,588 @@ def _button_label(button: Button) -> str:
     if data.startswith("k120"):
         return label
     return label
+
+
+_TOP_LEVEL_CALLBACKS = frozenset({"a", "ls", "k120today", "k120p", "k120h", "k122tot"})
+
+
+def project_v02_screen(screen: Screen, *, surface: str | None = None) -> Screen:
+    """Project existing authoritative controller state into the accepted KIR-168 shell.
+
+    This function changes presentation/navigation only. Callback payloads that perform
+    domain writes remain owned by the existing controllers and stores.
+    """
+
+    projected = localize_operational_screen(screen)
+    resolved_surface = surface or _infer_surface(projected)
+
+    if resolved_surface == "start":
+        return Screen(
+            text=(
+                "VitaminBot\n\n"
+                "Помогу собрать ваши добавки в одном месте, подтвердить данные с этикетки "
+                "и организовать ежедневный план.\n\n"
+                "Если данных недостаточно или что-то неоднозначно, я покажу это прямо — "
+                "без догадок."
+            ),
+            rows=(
+                (Button("Добавить первую добавку", "a"),),
+                (Button("Как это работает", "h"),),
+            ),
+        )
+
+    if resolved_surface == "today":
+        return _project_today(projected)
+    if resolved_surface == "add":
+        return _project_add(projected)
+    if resolved_surface == "composition":
+        return _project_composition(projected)
+    if resolved_surface == "totals":
+        return _project_totals(projected)
+    if resolved_surface == "safety":
+        return _project_safety(projected)
+    if resolved_surface == "rules":
+        return _project_rules(projected)
+    if resolved_surface == "sources":
+        return _project_sources(projected)
+    if resolved_surface == "why":
+        return _project_why(projected)
+    if resolved_surface == "supplements":
+        return _project_supplements(projected)
+    if resolved_surface == "supplement":
+        return _project_supplement(projected)
+    if resolved_surface == "plan":
+        return _project_plan(projected)
+    if resolved_surface == "history":
+        return _project_history(projected)
+    if resolved_surface == "history_confirmation":
+        return projected
+    if resolved_surface == "profile":
+        profile = _project_residual(projected)
+        profile = Screen(
+            text=profile.text.replace(
+                "Only technical profile fields are collected here. "
+                "Medical/applicability fields are not collected speculatively.",
+                "Здесь хранятся только технические настройки. "
+                "Данные применимости не собираются заранее: если конкретной функции "
+                "понадобятся эти данные, она должна запросить их отдельно.",
+            ),
+            rows=profile.rows,
+        )
+        return _with_footer(profile, ((Button("Сегодня", "k120today"),),))
+    if resolved_surface == "help":
+        return projected
+    return _project_residual(projected)
+
+
+def project_v02_scientific_shell(screen: Screen) -> Screen:
+    """Translate navigation around governed scientific text without rewriting claims."""
+
+    rows = tuple(
+        tuple(
+            Button(_scientific_button_label(button.label), button.callback_data) for button in row
+        )
+        for row in screen.rows
+    )
+    callbacks = {button.callback_data for row in rows for button in row}
+    if callbacks and all(data.startswith("k146c:") for data in callbacks):
+        rows = _merge_rows(
+            rows,
+            (
+                (Button("Итоги", "k122tot"),),
+                (Button("Сегодня", "k120today"),),
+            ),
+        )
+    return Screen(text=screen.text, rows=rows)
+
+
+def _infer_surface(screen: Screen) -> str | None:
+    callbacks = [button.callback_data for row in screen.rows for button in row]
+    first = screen.text.splitlines()[0] if screen.text else ""
+
+    if first.startswith("Сегодня"):
+        return "today"
+    if first.startswith("План"):
+        return "plan"
+    if first.startswith("История"):
+        return "history"
+    if first.startswith("Профиль"):
+        return "profile"
+    if first.startswith("Мои добавки") or first.startswith("Добавок пока нет"):
+        return "supplements"
+    if any(data.startswith(("p:", "en:", "es:", "rp:", "rc:")) for data in callbacks):
+        return "supplement"
+    return None
+
+
+def _project_add(screen: Screen) -> Screen:
+    text = screen.text
+    replacements = (
+        ("How it works", "Как это работает"),
+        (
+            "Product/label facts and your intake plan are stored as different things.",
+            "Данные с упаковки и ваш план хранятся отдельно.",
+        ),
+        (
+            "Manual confirmation means “this matches what I entered”, not “this is safe”.",
+            "Ручное подтверждение означает «это совпадает с моим вводом», а не «это безопасно».",
+        ),
+        (
+            "Technical profile fields are optional here and can be reviewed or corrected.",
+            "Технические настройки можно проверить или изменить отдельно.",
+        ),
+        (
+            "Safety/applicability questions are requested only when a governed feature needs them.",
+            "Данные применимости запрашиваются только тогда, когда они нужны конкретной "
+            "принятой функции.",
+        ),
+        ("Serving —", "Порция —"),
+        ("Current name:", "Текущее название:"),
+        (
+            "Send the supplement name you want recorded.",
+            "Отправьте название, которое нужно сохранить.",
+        ),
+        ("New serving unit:", "Новая единица продукта:"),
+        (
+            "How many of these units make one label serving? Enter a positive number.",
+            "Сколько таких единиц составляет одну порцию по этикетке? Введите положительное число.",
+        ),
+    )
+    for source, target in replacements:
+        text = text.replace(source, target)
+    rows = tuple(
+        tuple(Button(_button_label(button), button.callback_data) for button in row)
+        for row in screen.rows
+    )
+    return _project_residual(Screen(text=text, rows=rows))
+
+
+def _project_composition(screen: Screen) -> Screen:
+    rows: list[tuple[Button, ...]] = []
+    for row in screen.rows:
+        rendered: list[Button] = []
+        for button in row:
+            label = button.label
+            if button.callback_data.startswith("k122ok:"):
+                label = "Подтвердить состав"
+            elif button.callback_data == "k122cancel":
+                label = "Отмена"
+            elif button.callback_data.startswith("o:"):
+                label = "Назад к добавке"
+            rendered.append(Button(label, button.callback_data))
+        rows.append(tuple(rendered))
+
+    callbacks = {button.callback_data for row in rows for button in row}
+    if "k122tot" in callbacks and not any(data.startswith("o:") for data in callbacks):
+        rows = list(
+            _merge_rows(
+                tuple(rows),
+                (
+                    (Button("Сегодня", "k120today"),),
+                    (Button("Добавки", "ls"),),
+                ),
+            )
+        )
+    return Screen(text=screen.text, rows=tuple(rows))
+
+
+def _project_totals(screen: Screen) -> Screen:
+    rows: list[tuple[Button, ...]] = []
+    for row in screen.rows:
+        rendered: list[Button] = []
+        for button in row:
+            label = button.label
+            if button.callback_data == "k122safe":
+                label = "Проверка"
+            elif button.callback_data == "k122rules":
+                label = "Почему так распределено?"
+            elif button.callback_data.startswith("k146c:"):
+                label = button.label
+            rendered.append(Button(label, button.callback_data))
+        rows.append(tuple(rendered))
+    return Screen(
+        text=screen.text,
+        rows=_merge_rows(
+            tuple(rows),
+            (
+                (Button("Сегодня", "k120today"), Button("План", "k120p")),
+                (Button("Добавки", "ls"),),
+            ),
+        ),
+    )
+
+
+def _project_safety(screen: Screen) -> Screen:
+    rows = tuple(
+        tuple(
+            Button(
+                "Почему? / Источники"
+                if button.callback_data.startswith("k122src:")
+                else button.label,
+                button.callback_data,
+            )
+            for button in row
+        )
+        for row in screen.rows
+    )
+    return Screen(
+        text=screen.text,
+        rows=_merge_rows(
+            rows,
+            (
+                (Button("Итоги", "k122tot"),),
+                (Button("Сегодня", "k120today"),),
+            ),
+        ),
+    )
+
+
+def _project_rules(screen: Screen) -> Screen:
+    rows = tuple(
+        tuple(
+            Button(
+                "Источники правила"
+                if button.callback_data.startswith("k122why:")
+                else button.label,
+                button.callback_data,
+            )
+            for button in row
+        )
+        for row in screen.rows
+    )
+    return Screen(
+        text=screen.text,
+        rows=_merge_rows(
+            rows,
+            (
+                (Button("Сегодня", "k120today"), Button("План", "k120p")),
+                (Button("Итоги", "k122tot"),),
+            ),
+        ),
+    )
+
+
+def _project_sources(screen: Screen) -> Screen:
+    rows = tuple(
+        tuple(
+            Button(
+                "Назад" if button.callback_data in {"k122rules", "k122safe"} else button.label,
+                button.callback_data,
+            )
+            for button in row
+        )
+        for row in screen.rows
+    )
+    return Screen(text=screen.text, rows=rows)
+
+
+def _project_why(screen: Screen) -> Screen:
+    return Screen(
+        text=screen.text,
+        rows=tuple(
+            tuple(
+                Button(
+                    "Назад к «Сегодня»" if button.callback_data == "k120today" else button.label,
+                    button.callback_data,
+                )
+                for button in row
+            )
+            for row in screen.rows
+        ),
+    )
+
+
+def _project_today(screen: Screen) -> Screen:
+    rows = _without_callbacks(screen.rows, {"k120p", "k120h", "ls", "a", "k122tot"})
+    footer = (
+        (Button("+ Добавить добавку", "a"),),
+        (Button("Итоги", "k122tot"), Button("План", "k120p")),
+        (Button("Добавки", "ls"), Button("История", "k120h")),
+    )
+    return Screen(text=screen.text, rows=_merge_rows(rows, footer))
+
+
+def _project_supplements(screen: Screen) -> Screen:
+    text = screen.text
+    if text.startswith("No supplements yet.") or text.startswith("Добавок пока нет"):
+        text = (
+            "Добавок пока нет\n\n"
+            "Добавьте первую добавку, чтобы подтвердить данные с этикетки "
+            "и при необходимости настроить план."
+        )
+    else:
+        text = text.replace("My supplements —", "Мои добавки —")
+        text = text.replace(" — plan set", " — план настроен")
+        text = text.replace(" — no plan yet", " — план не настроен")
+    rows = tuple(
+        tuple(
+            Button(
+                (
+                    "Открыть " + button.label.removeprefix("Open ")
+                    if button.label.startswith("Open ")
+                    else _button_label(button)
+                ),
+                button.callback_data,
+            )
+            for button in row
+        )
+        for row in screen.rows
+    )
+    rows = _without_callbacks(rows, {"a", "k120today", "k120p", "k120h"})
+    footer = (
+        (Button("Добавить добавку", "a"),),
+        (Button("Сегодня", "k120today"), Button("План", "k120p")),
+        (Button("История", "k120h"),),
+    )
+    return Screen(text=text, rows=_merge_rows(rows, footer))
+
+
+def _project_supplement(screen: Screen) -> Screen:
+    screen = _project_residual(screen)
+    rows = screen.rows
+    callbacks = [button for row in rows for button in row]
+    destructive = next(
+        (button for button in callbacks if button.callback_data.startswith("rc:")),
+        None,
+    )
+    if destructive is not None:
+        parts = destructive.callback_data.split(":")
+        name = screen.text.splitlines()[0]
+        if name.startswith("Remove ") and name.endswith("?"):
+            name = name[len("Remove ") : -1]
+        text = (
+            f"Удалить {name}?\n\n"
+            "Будет удалена эта отслеживаемая ручная запись, её сохранённый план "
+            "и связанная история приёма. Служебные строки, созданные только для этой "
+            "ручной записи, удаляются в той же транзакции.\n\n"
+            "Другие отслеживаемые добавки не изменятся."
+        )
+        cancel = next(
+            (button for button in callbacks if button.callback_data.startswith("o:")),
+            None,
+        )
+        return Screen(
+            text=text,
+            rows=(
+                (Button(f"Удалить {name}", destructive.callback_data),),
+                (
+                    Button(
+                        "Отмена",
+                        cancel.callback_data if cancel is not None else "ls",
+                    ),
+                ),
+            ),
+        )
+
+    plan = next((b for b in callbacks if b.callback_data.startswith("p:")), None)
+    edit_name = next((b for b in callbacks if b.callback_data.startswith("en:")), None)
+    edit_serving = next((b for b in callbacks if b.callback_data.startswith("es:")), None)
+    remove = next((b for b in callbacks if b.callback_data.startswith("rp:")), None)
+
+    if plan is None:
+        return _project_residual(screen)
+
+    parts = plan.callback_data.split(":")
+    composition_callback = f"k122c:{parts[1]}:{parts[2]}" if len(parts) == 3 else "k122comp"
+    new_rows: list[tuple[Button, ...]] = [
+        (Button("Состав", composition_callback),),
+        (Button("Добавить / изменить план", plan.callback_data),),
+        (Button("Итоги", "k122tot"),),
+    ]
+    if edit_name is not None and edit_serving is not None:
+        new_rows.append(
+            (
+                Button("Изменить название", edit_name.callback_data),
+                Button("Изменить порцию", edit_serving.callback_data),
+            )
+        )
+    if remove is not None:
+        new_rows.append((Button("Удалить добавку…", remove.callback_data),))
+    new_rows.append((Button("Назад к добавкам", "ls"),))
+    return Screen(text=screen.text, rows=tuple(new_rows))
+
+
+def _project_plan(screen: Screen) -> Screen:
+    text = (
+        screen.text.replace(" — Morning", " — Утро")
+        .replace(" — Day", " — День")
+        .replace(" — Evening", " — Вечер")
+    )
+    lines = text.splitlines()
+    rendered: list[str] = []
+    for line in lines:
+        if line.startswith("• "):
+            rendered.append("Ваша настройка: " + line[2:])
+        else:
+            rendered.append(line)
+    rows = _without_callbacks(
+        screen.rows,
+        {"k120today", "k120h", "k122rules", "ls"},
+    )
+    footer = (
+        (Button("Почему так распределено?", "k122rules"),),
+        (Button("Сегодня", "k120today"), Button("История", "k120h")),
+        (Button("Добавки", "ls"),),
+    )
+    return _project_residual(Screen(text="\n".join(rendered), rows=_merge_rows(rows, footer)))
+
+
+def _project_history(screen: Screen) -> Screen:
+    rows: list[tuple[Button, ...]] = []
+    for row in screen.rows:
+        rendered: list[Button] = []
+        for button in row:
+            data = button.callback_data
+            if data.startswith("k120c:"):
+                data = "k120q:" + data.removeprefix("k120c:")
+                rendered.append(Button("Исправить запись", data))
+            elif data != "k120today":
+                rendered.append(Button(_button_label(button), data))
+        if rendered:
+            rows.append(tuple(rendered))
+    rows.append((Button("Сегодня", "k120today"),))
+    return Screen(text=screen.text, rows=tuple(rows))
+
+
+def _project_residual(screen: Screen) -> Screen:
+    text = screen.text
+    replacements = (
+        (
+            "No supplements yet.\n\nAdd one manually to get started.",
+            "Добавок пока нет.\n\nДобавьте первую добавку.",
+        ),
+        (
+            "The manual draft is no longer available.",
+            "Черновик ручного ввода больше недоступен. Начните добавление заново.",
+        ),
+        (
+            "This input state is not supported.",
+            "Этот шаг ввода больше недоступен. Откройте текущее состояние снова.",
+        ),
+        (
+            "That action payload is invalid. Please reopen the current view.",
+            "Этот экран уже изменился. Действие не применено. Откройте текущее состояние снова.",
+        ),
+        (
+            "That action is not available in this MVP slice.",
+            "Это действие сейчас недоступно. Откройте текущее состояние снова.",
+        ),
+        (
+            "Unsupported Today/Plan action.",
+            "Это действие больше недоступно. Откройте текущее состояние через "
+            "«Сегодня» или «План».",
+        ),
+        (
+            "No Plan field is waiting for text input.",
+            "Сейчас ни одно поле плана не ждёт текстового ввода.",
+        ),
+        (
+            "This Plan edit is out of date. Open the current Plan and try again.",
+            "Этот экран плана уже изменился. Действие не применено. "
+            "Откройте текущий «План» и повторите.",
+        ),
+        (
+            "Pending input cancelled. Confirmed records were not changed.",
+            "Ввод отменён. Подтверждённые записи не изменены.",
+        ),
+        (
+            "I’m not waiting for free-form input right now. Use /add, /supplements, or /profile.",
+            "Сейчас я не жду текстового ввода. Откройте «Добавить», «Добавки» или «Профиль».",
+        ),
+        ("Please send a non-empty supplement name.", "Введите непустое название добавки."),
+        (
+            "The supplement name is too long for this MVP entry field.",
+            "Название слишком длинное. Сократите его и повторите.",
+        ),
+        (
+            "The supplement name contains unsupported control characters.",
+            "Название содержит неподдерживаемые служебные символы. Исправьте ввод.",
+        ),
+        (
+            "Enter a positive decimal number, for example 1, 1.5, or 2,5.",
+            "Введите положительное число, например 1, 1.5 или 2,5.",
+        ),
+        ("Enter a valid positive decimal number.", "Введите корректное положительное число."),
+        ("Quantity must be greater than zero.", "Количество должно быть больше нуля."),
+        ("Timezone value is too long.", "Значение часового пояса слишком длинное."),
+        (
+            "I don’t recognize that IANA timezone. Example: Europe/Helsinki.",
+            "Не удалось распознать часовой пояс. Пример: Europe/Helsinki.",
+        ),
+        (
+            "Use a locale such as en, fi, en-GB, or pt-BR.",
+            "Укажите код языка, например ru, en, fi или en-GB.",
+        ),
+        (
+            "Routine preference updated. The planned product-unit amount was not changed.",
+            "Настройка времени обновлена. Количество единиц продукта в плане не изменилось.",
+        ),
+        (
+            "Exact local time saved. The planned product-unit amount was not changed.",
+            "Точное местное время сохранено. Количество единиц продукта в плане не изменилось.",
+        ),
+        (
+            "Send a local time as HH:MM, for example 08:30.",
+            "Введите местное время в формате ЧЧ:ММ, например 08:30.",
+        ),
+        (
+            "Send a local time as HH:MM without seconds or timezone.",
+            "Введите местное время как ЧЧ:ММ — без секунд и часового пояса.",
+        ),
+        (
+            "Supplement removed. The tracked record, its saved plan, and linked "
+            "intake history were removed. Manual support rows created only for "
+            "this tracked record were also deleted.",
+            "Добавка удалена. Удалены эта отслеживаемая ручная запись, её сохранённый "
+            "план и связанная история приёма. Служебные строки, созданные только "
+            "для этой записи, также удалены.",
+        ),
+        ("Timezone updated.", "Часовой пояс обновлён."),
+        ("Locale updated.", "Язык интерфейса обновлён."),
+        ("Name updated.", "Название обновлено."),
+        ("Serving updated.", "Порция обновлена."),
+    )
+    for source, target in replacements:
+        text = text.replace(source, target)
+    return Screen(text=text, rows=screen.rows)
+
+
+def _without_callbacks(
+    rows: tuple[tuple[Button, ...], ...],
+    callback_ids: set[str],
+) -> tuple[tuple[Button, ...], ...]:
+    kept: list[tuple[Button, ...]] = []
+    for row in rows:
+        filtered = tuple(button for button in row if button.callback_data not in callback_ids)
+        if filtered:
+            kept.append(filtered)
+    return tuple(kept)
+
+
+def _merge_rows(
+    rows: tuple[tuple[Button, ...], ...],
+    extra: tuple[tuple[Button, ...], ...],
+) -> tuple[tuple[Button, ...], ...]:
+    seen = {button.callback_data for row in rows for button in row}
+    merged = list(rows)
+    for row in extra:
+        filtered = tuple(button for button in row if button.callback_data not in seen)
+        if filtered:
+            merged.append(filtered)
+            seen.update(button.callback_data for button in filtered)
+    return tuple(merged)
+
+
+def _with_footer(screen: Screen, footer: tuple[tuple[Button, ...], ...]) -> Screen:
+    return Screen(text=screen.text, rows=_merge_rows(screen.rows, footer))
+
+
+def _scientific_button_label(label: str) -> str:
+    return {
+        "Available cards": "Доступные карточки",
+        "Reference values": "Справочные значения",
+        "Sources": "Источники",
+        "Why / Sources": "Почему? / Источники",
+        "Back": "Назад",
+        "Why?": "Почему?",
+    }.get(label, label)
