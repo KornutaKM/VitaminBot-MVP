@@ -863,7 +863,10 @@ def test_rules_matched_preference_preserves_dynamic_identity_byte_exact(
 
     user_id = store.ensure_user(telegram_user_id)
     view = vertical._build_view(user_id)
-    assert any(rule.status.value == "matched_preference" for rule in view.rule_result.scheduling_results)
+    assert any(
+        rule.status.value == "matched_preference"
+        for rule in view.rule_result.scheduling_results
+    )
 
     raw_rules = vertical.rules(telegram_user_id)
     projected_rules = project_v02_screen(
