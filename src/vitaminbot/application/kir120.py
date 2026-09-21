@@ -245,12 +245,37 @@ class KIR120Controller:
                         "VitaminBot will fail closed rather than silently shift it."
                     )
                 )
-            if action in {"k120t", "k120s", "k120l", "k120w", "k120c"}:
+            if action in {"k120t", "k120s", "k120l", "k120w", "k120q", "k120c"}:
                 occurrence_id = parts[1]
                 expected_revision = int(parts[2])
                 if action == "k120w":
                     occurrence = self._store.occurrence(user_id, occurrence_id)
                     return self._why_screen(occurrence)
+                if action == "k120q":
+                    occurrence = self._store.occurrence(user_id, occurrence_id)
+                    if occurrence.revision != expected_revision:
+                        raise StaleOccurrence("occurrence changed before correction preview")
+                    if occurrence.state not in {"taken", "skipped"}:
+                        raise InvalidOccurrenceState(
+                            "only taken or skipped actions can be corrected"
+                        )
+                    return Screen(
+                        text=(
+                            f"Исправить запись — {occurrence.name}\n\n"
+                            "Текущая отметка будет сохранена в истории как ошибочная, "
+                            "а событие вернётся в состояние «нужна проверка». "
+                            "История не удаляется молча."
+                        ),
+                        rows=(
+                            (
+                                Button(
+                                    "Подтвердить исправление",
+                                    f"k120c:{occurrence_id}:{expected_revision}",
+                                ),
+                            ),
+                            (Button("Назад к истории", "k120h"),),
+                        ),
+                    )
                 if action == "k120t":
                     self._store.take(
                         user_id,

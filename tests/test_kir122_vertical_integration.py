@@ -20,7 +20,10 @@ from vitaminbot.persistence import migrate
 from vitaminbot.persistence.kir116 import KIR116Store
 from vitaminbot.persistence.kir120 import KIR120Store, RoutineTimes
 from vitaminbot.persistence.kir122 import KIR122Store
-from vitaminbot.telegram.presentation import localize_operational_screen
+from vitaminbot.telegram.presentation import (
+    localize_operational_screen,
+    project_v02_screen,
+)
 
 
 @pytest.fixture
@@ -291,3 +294,762 @@ def test_operational_projection_is_russian_first_without_changing_callbacks(
     add = localize_operational_screen(vertical.decorate_operational_screen(add_raw))
     assert "Сейчас доступен ручной ввод" in add.text
     assert _button(add, "Ввести вручную") == "m"
+
+
+def _confirm_composition(
+    vertical: KIR122Controller,
+    telegram_user_id: int,
+    *,
+    nutrient_label: str,
+    amount: str,
+    action_prefix: str,
+) -> None:
+    composition = vertical.composition(telegram_user_id)
+    picker = vertical.callback(
+        telegram_user_id,
+        _button(composition, "Состав: Example Magnesium"),
+        action_key=f"{action_prefix}:open",
+    )
+    amount_prompt = vertical.callback(
+        telegram_user_id,
+        _button(picker, nutrient_label),
+        action_key=f"{action_prefix}:nutrient",
+    )
+    assert "не рекомендация по дозе" in amount_prompt.text
+    review = vertical.text(
+        telegram_user_id,
+        amount,
+        action_key=f"{action_prefix}:amount",
+    )
+    confirmed = vertical.callback(
+        telegram_user_id,
+        _button(review, "Подтвердить"),
+        action_key=f"{action_prefix}:confirm",
+    )
+    assert "Состав подтверждён" in confirmed.text
+
+
+def test_supplement_detail_composition_bridge_round_trips_real_callbacks_and_stays_stale(
+    vertical_stack: tuple[
+        KIR116Controller,
+        KIR120Controller,
+        KIR122Controller,
+        KIR116Store,
+    ],
+) -> None:
+    base, _, vertical, _store = vertical_stack
+    telegram_user_id = 122003
+    _create_clean_account(base, telegram_user_id)
+
+    supplements = base.supplements(telegram_user_id)
+    detail = base.callback(
+        telegram_user_id,
+        _button(supplements, "Open Example Magnesium"),
+        action_key="cb:bridge:open-detail",
+    )
+    projected_detail = project_v02_screen(
+        vertical.decorate_operational_screen(detail),
+        surface="supplement",
+    )
+
+    composition_callback = _button(projected_detail, "Состав")
+    picker = vertical.callback(
+        telegram_user_id,
+        composition_callback,
+        action_key="cb:bridge:open-composition",
+    )
+    assert picker.text.startswith("Состав — Example Magnesium")
+
+    back_callback = _button(picker, "Назад к добавке")
+    round_trip_detail = base.callback(
+        telegram_user_id,
+        back_callback,
+        action_key="cb:bridge:back-to-detail",
+    )
+    assert round_trip_detail.text.startswith("Example Magnesium")
+    assert "Status: Confirmed manual entry" in round_trip_detail.text
+
+    edit_name = base.callback(
+        telegram_user_id,
+        _button(round_trip_detail, "Edit name"),
+        action_key="cb:bridge:edit-name",
+    )
+    assert "Send the new tracked supplement name" in edit_name.text
+    base.text(
+        telegram_user_id,
+        "Example Magnesium revised",
+        action_key="msg:bridge:rename",
+    )
+
+    stale = vertical.callback(
+        telegram_user_id,
+        composition_callback,
+        action_key="cb:bridge:stale-composition",
+    )
+    assert "Экран устарел" in stale.text
+    assert "не применил старое действие" in stale.text
+
+
+@pytest.mark.parametrize(
+    ("adversarial_name", "mutated_name"),
+    (
+        ("Morning — Formula", "Утро — Formula"),
+        ("Timezone: Blend", "Часовой пояс: Blend"),
+        ("Not set", "Не настроен"),
+        ("Label serving: Formula", "Порция по этикетке: Formula"),
+        ("Your plan: Formula", "Ваш план: Formula"),
+    ),
+)
+def test_operational_localization_preserves_short_shell_tokens_in_product_identity(
+    vertical_stack: tuple[
+        KIR116Controller,
+        KIR120Controller,
+        KIR122Controller,
+        KIR116Store,
+    ],
+    adversarial_name: str,
+    mutated_name: str,
+) -> None:
+    base, schedule, vertical, _store = vertical_stack
+    telegram_user_id = 122004
+    _create_clean_account(base, telegram_user_id)
+
+    supplements = base.supplements(telegram_user_id)
+    detail = base.callback(
+        telegram_user_id,
+        _button(supplements, "Open Example Magnesium"),
+        action_key=f"cb:short-localization:open:{adversarial_name}",
+    )
+    base.callback(
+        telegram_user_id,
+        _button(detail, "Edit name"),
+        action_key=f"cb:short-localization:edit:{adversarial_name}",
+    )
+    renamed = base.text(
+        telegram_user_id,
+        adversarial_name,
+        action_key=f"msg:short-localization:rename:{adversarial_name}",
+    )
+
+    projected_detail = project_v02_screen(
+        vertical.decorate_operational_screen(renamed),
+        surface="supplement",
+    )
+    identity_bytes = adversarial_name.encode()
+    assert identity_bytes in projected_detail.text.encode()
+    assert mutated_name.encode() not in projected_detail.text.encode()
+    assert "Ваш план: Утро —" in projected_detail.text
+
+    today = schedule.today(
+        telegram_user_id,
+        now=datetime(2026, 9, 20, 11, 0, tzinfo=UTC),
+    )
+    projected_today = project_v02_screen(
+        vertical.decorate_operational_screen(today),
+        surface="today",
+    )
+    assert f"• Утро — {adversarial_name}:".encode() in projected_today.text.encode()
+    assert mutated_name.encode() not in projected_today.text.encode()
+    assert "[ожидает]" in projected_today.text
+
+    plan = schedule.plan(telegram_user_id)
+    projected_plan = project_v02_screen(
+        vertical.decorate_operational_screen(plan),
+        surface="plan",
+    )
+    assert projected_plan.text.startswith("План")
+    assert f"Ваша настройка: {adversarial_name}:".encode() in projected_plan.text.encode()
+    assert mutated_name.encode() not in projected_plan.text.encode()
+    assert " — Утро" in projected_plan.text
+    assert "Это ваши повторяющиеся настройки режима." in projected_plan.text
+
+    schedule.callback(
+        telegram_user_id,
+        _button(today, "Taken"),
+        action_key=f"cb:short-localization:taken:{adversarial_name}",
+        now=datetime(2026, 9, 20, 12, 0, tzinfo=UTC),
+    )
+    history = schedule.history(telegram_user_id)
+    projected_history = project_v02_screen(
+        vertical.decorate_operational_screen(history),
+        surface="history",
+    )
+    assert projected_history.text.startswith("История")
+    assert f"• {adversarial_name}:".encode() in projected_history.text.encode()
+    assert mutated_name.encode() not in projected_history.text.encode()
+    assert " — принято" in projected_history.text
+
+
+@pytest.mark.parametrize(
+    "adversarial_name",
+    (
+        "Plan",
+        "Today",
+        "History",
+        "Profile",
+        "Formula — Morning",
+    ),
+)
+def test_shell_role_localization_preserves_confirmed_identity_byte_exact_across_surfaces(
+    vertical_stack: tuple[
+        KIR116Controller,
+        KIR120Controller,
+        KIR122Controller,
+        KIR116Store,
+    ],
+    adversarial_name: str,
+) -> None:
+    base, schedule, vertical, _store = vertical_stack
+    telegram_user_id = 122014
+    _create_clean_account(base, telegram_user_id)
+
+    supplements = base.supplements(telegram_user_id)
+    detail = base.callback(
+        telegram_user_id,
+        _button(supplements, "Open Example Magnesium"),
+        action_key=f"cb:role-collision:open:{adversarial_name}",
+    )
+    base.callback(
+        telegram_user_id,
+        _button(detail, "Edit name"),
+        action_key=f"cb:role-collision:edit:{adversarial_name}",
+    )
+    renamed = base.text(
+        telegram_user_id,
+        adversarial_name,
+        action_key=f"msg:role-collision:rename:{adversarial_name}",
+    )
+
+    identity_bytes = adversarial_name.encode()
+    projected_detail = project_v02_screen(
+        vertical.decorate_operational_screen(renamed),
+        surface="supplement",
+    )
+    detail_lines = projected_detail.text.splitlines()
+    assert adversarial_name in detail_lines
+    assert identity_bytes in projected_detail.text.encode()
+    assert "Ваш план: Утро —" in projected_detail.text
+
+    today = schedule.today(
+        telegram_user_id,
+        now=datetime(2026, 9, 20, 11, 0, tzinfo=UTC),
+    )
+    projected_today = project_v02_screen(
+        vertical.decorate_operational_screen(today),
+        surface="today",
+    )
+    assert projected_today.text.startswith("Сегодня")
+    assert f"• Утро — {adversarial_name}:".encode() in projected_today.text.encode()
+
+    plan = schedule.plan(telegram_user_id)
+    projected_plan = project_v02_screen(
+        vertical.decorate_operational_screen(plan),
+        surface="plan",
+    )
+    assert projected_plan.text.startswith("План")
+    assert f"Ваша настройка: {adversarial_name}:".encode() in projected_plan.text.encode()
+    assert f"Ваша настройка: {adversarial_name}: 1.5 capsule — Утро".encode() in (
+        projected_plan.text.encode()
+    )
+
+    schedule.callback(
+        telegram_user_id,
+        _button(today, "Taken"),
+        action_key=f"cb:role-collision:taken:{adversarial_name}",
+        now=datetime(2026, 9, 20, 12, 0, tzinfo=UTC),
+    )
+    history = schedule.history(telegram_user_id)
+    projected_history = project_v02_screen(
+        vertical.decorate_operational_screen(history),
+        surface="history",
+    )
+    assert projected_history.text.startswith("История")
+    assert f"• {adversarial_name}:".encode() in projected_history.text.encode()
+
+    current_list = base.supplements(telegram_user_id)
+    current_detail = base.callback(
+        telegram_user_id,
+        _button(current_list, f"Open {adversarial_name}"),
+        action_key=f"cb:role-collision:reopen:{adversarial_name}",
+    )
+    remove_confirmation = base.callback(
+        telegram_user_id,
+        _button(current_detail, "Remove supplement…"),
+        action_key=f"cb:role-collision:remove-preview:{adversarial_name}",
+    )
+    projected_remove = project_v02_screen(
+        vertical.decorate_operational_screen(remove_confirmation),
+        surface="supplement",
+    )
+    assert projected_remove.text.splitlines()[0].encode() == f"Удалить {adversarial_name}?".encode()
+
+    profile = project_v02_screen(base.profile(telegram_user_id), surface="profile")
+    assert profile.text.startswith("Профиль")
+
+
+@pytest.mark.parametrize(
+    "adversarial_name",
+    (
+        "Product facts and your plan are stored separately.",
+        "Formula | Product facts and your plan are stored separately. | Daily",
+    ),
+)
+def test_kir122_identity_roles_bypass_generic_phrase_localization_end_to_end(
+    vertical_stack: tuple[
+        KIR116Controller,
+        KIR120Controller,
+        KIR122Controller,
+        KIR116Store,
+    ],
+    adversarial_name: str,
+) -> None:
+    base, schedule, vertical, _store = vertical_stack
+    telegram_user_id = 122015
+    _create_clean_account(base, telegram_user_id)
+
+    supplements = base.supplements(telegram_user_id)
+    detail = base.callback(
+        telegram_user_id,
+        _callback_with_prefix(supplements, "o:"),
+        action_key=f"cb:kir122-identity:open:{adversarial_name}",
+    )
+    base.callback(
+        telegram_user_id,
+        _callback_with_prefix(detail, "en:"),
+        action_key=f"cb:kir122-identity:edit:{adversarial_name}",
+    )
+    renamed = base.text(
+        telegram_user_id,
+        adversarial_name,
+        action_key=f"msg:kir122-identity:rename:{adversarial_name}",
+    )
+
+    identity_bytes = adversarial_name.encode()
+    projected_detail = project_v02_screen(
+        vertical.decorate_operational_screen(renamed),
+        surface="supplement",
+    )
+    assert adversarial_name in projected_detail.text.splitlines()
+    assert identity_bytes in projected_detail.text.encode()
+    assert "Факты о продукте и ваш план хранятся отдельно." in projected_detail.text
+
+    composition = vertical.composition(telegram_user_id)
+    projected_composition = project_v02_screen(
+        vertical.decorate_operational_screen(composition),
+        surface="composition",
+    )
+    assert f"• {adversarial_name} —".encode() in projected_composition.text.encode()
+    assert _button(
+        projected_composition,
+        f"Состав: {adversarial_name[:28]}",
+    ).startswith("k122c:")
+
+    picker = vertical.callback(
+        telegram_user_id,
+        _callback_with_prefix(composition, "k122c:"),
+        action_key=f"cb:kir122-identity:picker:{adversarial_name}",
+    )
+    projected_picker = project_v02_screen(
+        vertical.decorate_operational_screen(picker),
+        surface="composition",
+    )
+    assert projected_picker.text.splitlines()[0].encode() == f"Состав — {adversarial_name}".encode()
+
+    amount_prompt = vertical.callback(
+        telegram_user_id,
+        _button(picker, "Магний"),
+        action_key=f"cb:kir122-identity:amount-prompt:{adversarial_name}",
+    )
+    projected_amount = project_v02_screen(
+        vertical.decorate_operational_screen(amount_prompt),
+        surface="composition",
+    )
+    assert projected_amount.text.splitlines()[0].encode() == f"Магний — {adversarial_name}".encode()
+
+    review = vertical.text(
+        telegram_user_id,
+        "100 mg",
+        action_key=f"msg:kir122-identity:amount:{adversarial_name}",
+    )
+    vertical.callback(
+        telegram_user_id,
+        _button(review, "Подтвердить"),
+        action_key=f"cb:kir122-identity:confirm:{adversarial_name}",
+    )
+
+    totals = vertical.totals(telegram_user_id)
+    projected_totals = project_v02_screen(
+        vertical.decorate_operational_screen(totals),
+        surface="totals",
+    )
+    assert f"  • {adversarial_name}: 75000 мкг".encode() in projected_totals.text.encode()
+
+    today = schedule.today(
+        telegram_user_id,
+        now=datetime(2026, 9, 20, 11, 0, tzinfo=UTC),
+    )
+    projected_today = project_v02_screen(
+        vertical.decorate_operational_screen(today),
+        surface="today",
+    )
+    assert f"• Утро — {adversarial_name}:".encode() in projected_today.text.encode()
+
+    plan = schedule.plan(telegram_user_id)
+    projected_plan = project_v02_screen(
+        vertical.decorate_operational_screen(plan),
+        surface="plan",
+    )
+    assert f"Ваша настройка: {adversarial_name}:".encode() in projected_plan.text.encode()
+
+    schedule.callback(
+        telegram_user_id,
+        _button(today, "Taken"),
+        action_key=f"cb:kir122-identity:taken:{adversarial_name}",
+        now=datetime(2026, 9, 20, 12, 0, tzinfo=UTC),
+    )
+    history = schedule.history(telegram_user_id)
+    projected_history = project_v02_screen(
+        vertical.decorate_operational_screen(history),
+        surface="history",
+    )
+    assert f"• {adversarial_name}:".encode() in projected_history.text.encode()
+
+    current_list = base.supplements(telegram_user_id)
+    current_detail = base.callback(
+        telegram_user_id,
+        _callback_with_prefix(current_list, "o:"),
+        action_key=f"cb:kir122-identity:reopen:{adversarial_name}",
+    )
+    remove_confirmation = base.callback(
+        telegram_user_id,
+        _callback_with_prefix(current_detail, "rp:"),
+        action_key=f"cb:kir122-identity:remove-preview:{adversarial_name}",
+    )
+    projected_remove = project_v02_screen(
+        vertical.decorate_operational_screen(remove_confirmation),
+        surface="supplement",
+    )
+    assert projected_remove.text.splitlines()[0].encode() == f"Удалить {adversarial_name}?".encode()
+
+
+def test_operational_localization_preserves_valid_dynamic_names_with_status_words(
+    vertical_stack: tuple[
+        KIR116Controller,
+        KIR120Controller,
+        KIR122Controller,
+        KIR116Store,
+    ],
+) -> None:
+    base, schedule, vertical, _store = vertical_stack
+    telegram_user_id = 122004
+    _create_clean_account(base, telegram_user_id)
+
+    supplements = base.supplements(telegram_user_id)
+    detail = base.callback(
+        telegram_user_id,
+        _button(supplements, "Open Example Magnesium"),
+        action_key="cb:localization:open",
+    )
+    base.callback(
+        telegram_user_id,
+        _button(detail, "Edit name"),
+        action_key="cb:localization:edit-name",
+    )
+    adversarial_name = "taken skip later formula"
+    renamed = base.text(
+        telegram_user_id,
+        adversarial_name,
+        action_key="msg:localization:rename",
+    )
+    assert f"\n\n{adversarial_name}\n\n" in renamed.text
+
+    today = schedule.today(
+        telegram_user_id,
+        now=datetime(2026, 9, 20, 11, 0, tzinfo=UTC),
+    )
+    localized_today = localize_operational_screen(vertical.decorate_operational_screen(today))
+    assert adversarial_name in localized_today.text
+    assert "[ожидает]" in localized_today.text
+
+    schedule.callback(
+        telegram_user_id,
+        _button(today, "Taken"),
+        action_key="cb:localization:taken",
+        now=datetime(2026, 9, 20, 12, 0, tzinfo=UTC),
+    )
+    history = schedule.history(telegram_user_id)
+    localized_history = localize_operational_screen(vertical.decorate_operational_screen(history))
+    assert adversarial_name in localized_history.text
+    assert f"• {adversarial_name}:" in localized_history.text
+    assert " — принято" in localized_history.text
+
+
+@pytest.mark.parametrize(
+    "adversarial_name",
+    (
+        "Product facts and your plan are stored separately.",
+        "Formula | Product facts and your plan are stored separately. | Daily",
+    ),
+)
+def test_rules_matched_preference_preserves_dynamic_identity_byte_exact(
+    vertical_stack: tuple[
+        KIR116Controller,
+        KIR120Controller,
+        KIR122Controller,
+        KIR116Store,
+    ],
+    adversarial_name: str,
+) -> None:
+    base, _, vertical, store = vertical_stack
+    telegram_user_id = 122016
+    _create_clean_account(base, telegram_user_id)
+
+    supplements = base.supplements(telegram_user_id)
+    detail = base.callback(
+        telegram_user_id,
+        _callback_with_prefix(supplements, "o:"),
+        action_key="cb:rules-identity:open",
+    )
+    base.callback(
+        telegram_user_id,
+        _callback_with_prefix(detail, "en:"),
+        action_key="cb:rules-identity:edit-name",
+    )
+    renamed = base.text(
+        telegram_user_id,
+        adversarial_name,
+        action_key="msg:rules-identity:rename",
+    )
+
+    base.callback(
+        telegram_user_id,
+        _callback_with_prefix(renamed, "p:"),
+        action_key="cb:rules-identity:edit-plan",
+    )
+    bucket = base.text(
+        telegram_user_id,
+        "2",
+        action_key="msg:rules-identity:plan-quantity",
+    )
+    base.callback(
+        telegram_user_id,
+        _button(bucket, "Morning"),
+        action_key="cb:rules-identity:save-plan",
+    )
+
+    add_second = base.callback(
+        telegram_user_id,
+        "a",
+        action_key="cb:rules-identity:add-second",
+    )
+    base.callback(
+        telegram_user_id,
+        _button(add_second, "Enter manually"),
+        action_key="cb:rules-identity:second-manual",
+    )
+    second_units = base.text(
+        telegram_user_id,
+        "Rule Pair Iron",
+        action_key="msg:rules-identity:second-name",
+    )
+    base.callback(
+        telegram_user_id,
+        _button(second_units, "Capsule"),
+        action_key="cb:rules-identity:second-unit",
+    )
+    second_review = base.text(
+        telegram_user_id,
+        "2",
+        action_key="msg:rules-identity:second-serving",
+    )
+    second_confirmed = base.callback(
+        telegram_user_id,
+        _button(second_review, "Confirm entry"),
+        action_key="cb:rules-identity:second-confirm",
+    )
+    base.callback(
+        telegram_user_id,
+        _button(second_confirmed, "Add / edit plan"),
+        action_key="cb:rules-identity:second-plan",
+    )
+    second_bucket = base.text(
+        telegram_user_id,
+        "1",
+        action_key="msg:rules-identity:second-plan-quantity",
+    )
+    base.callback(
+        telegram_user_id,
+        _button(second_bucket, "Morning"),
+        action_key="cb:rules-identity:second-save-plan",
+    )
+
+    composition = vertical.composition(telegram_user_id)
+    calcium_picker = vertical.callback(
+        telegram_user_id,
+        _button(composition, f"Состав: {adversarial_name[:28]}"),
+        action_key="cb:rules-identity:calcium-composition",
+    )
+    calcium_prompt = vertical.callback(
+        telegram_user_id,
+        _button(calcium_picker, "Кальций"),
+        action_key="cb:rules-identity:calcium",
+    )
+    assert f"Кальций — {adversarial_name}".encode() in calcium_prompt.text.encode()
+    calcium_review = vertical.text(
+        telegram_user_id,
+        "100 mg",
+        action_key="msg:rules-identity:calcium-amount",
+    )
+    vertical.callback(
+        telegram_user_id,
+        _button(calcium_review, "Подтвердить"),
+        action_key="cb:rules-identity:calcium-confirm",
+    )
+
+    composition = vertical.composition(telegram_user_id)
+    iron_picker = vertical.callback(
+        telegram_user_id,
+        _button(composition, "Состав: Rule Pair Iron"),
+        action_key="cb:rules-identity:iron-composition",
+    )
+    iron_prompt = vertical.callback(
+        telegram_user_id,
+        _button(iron_picker, "Железо"),
+        action_key="cb:rules-identity:iron",
+    )
+    assert "Железо — Rule Pair Iron" in iron_prompt.text
+    iron_review = vertical.text(
+        telegram_user_id,
+        "10 mg",
+        action_key="msg:rules-identity:iron-amount",
+    )
+    vertical.callback(
+        telegram_user_id,
+        _button(iron_review, "Подтвердить"),
+        action_key="cb:rules-identity:iron-confirm",
+    )
+
+    user_id = store.ensure_user(telegram_user_id)
+    view = vertical._build_view(user_id)
+    assert any(
+        rule.status.value == "matched_preference" for rule in view.rule_result.scheduling_results
+    )
+
+    raw_rules = vertical.rules(telegram_user_id)
+    projected_rules = project_v02_screen(
+        vertical.decorate_operational_screen(raw_rules),
+        surface="rules",
+    )
+
+    matched_line = next(
+        line
+        for line in projected_rules.text.splitlines()
+        if adversarial_name in line and "предпочтение — не размещать в одном приёме" in line
+    )
+    assert adversarial_name.encode() in matched_line.encode()
+    assert (
+        "предпочтение — не размещать в одном приёме. "
+        "Точный интервал не установлен. Это не медицинская необходимость."
+    ) in matched_line
+    assert "Важно: Это предпочтение, а не медицинская необходимость." in projected_rules.text
+    assert "Важно: Правило не создаёт и не изменяет персональную дозу." in projected_rules.text
+    assert "Отсутствие правила не означает, что сочетание безопасно." in projected_rules.text
+    assert _callback_with_prefix(projected_rules, "k122why:").startswith("k122why:")
+    assert any(
+        button.label == "Источники правила"
+        for row in projected_rules.rows
+        for button in row
+        if button.callback_data.startswith("k122why:")
+    )
+
+
+def test_rule_sources_keep_full_accepted_provenance(
+    vertical_stack: tuple[
+        KIR116Controller,
+        KIR120Controller,
+        KIR122Controller,
+        KIR116Store,
+    ],
+) -> None:
+    base, _, vertical, store = vertical_stack
+    telegram_user_id = 122005
+    _create_clean_account(base, telegram_user_id)
+    _confirm_composition(
+        vertical,
+        telegram_user_id,
+        nutrient_label="Витамин D",
+        amount="10 ug",
+        action_prefix="cb:rule-provenance",
+    )
+
+    rules = vertical.rules(telegram_user_id)
+    sources = vertical.callback(
+        telegram_user_id,
+        _callback_with_prefix(rules, "k122why:"),
+        action_key="cb:rule-provenance:sources",
+    )
+    user_id = store.ensure_user(telegram_user_id)
+    view = vertical._build_view(user_id)
+    expected_sources = {
+        source.source_key: source
+        for result in view.rule_result.scheduling_results
+        for source in result.source_provenance
+    }
+    assert expected_sources
+
+    for source in expected_sources.values():
+        assert source.title in sources.text
+        assert source.authority in sources.text
+        assert source.jurisdiction_note in sources.text
+        assert source.version_label in sources.text
+        assert source.retrieved_on.isoformat() in sources.text
+        assert source.locator in sources.text
+        assert source.source_url in sources.text
+
+
+def test_reference_sources_keep_locator_and_matched_applicability_context(
+    vertical_stack: tuple[
+        KIR116Controller,
+        KIR120Controller,
+        KIR122Controller,
+        KIR116Store,
+    ],
+) -> None:
+    base, _, vertical, store = vertical_stack
+    telegram_user_id = 122006
+    _create_clean_account(base, telegram_user_id)
+    _confirm_composition(
+        vertical,
+        telegram_user_id,
+        nutrient_label="Витамин C",
+        amount="100 mg",
+        action_prefix="cb:reference-provenance",
+    )
+
+    user_id = store.ensure_user(telegram_user_id)
+    view = vertical._build_view(user_id)
+    envelopes = vertical._reference_envelopes(view)
+    provenance = tuple(source for envelope in envelopes for source in envelope.provenance)
+    assert provenance
+    assert all(source.applicability_status == "match" for source in provenance)
+
+    safety = vertical.safety(telegram_user_id)
+    sources = vertical.callback(
+        telegram_user_id,
+        _callback_with_prefix(safety, "k122src:"),
+        action_key="cb:reference-provenance:sources",
+    )
+    assert "применимость: запись совпала с текущим контекстом" in sources.text
+
+    for source in provenance:
+        assert source.title in sources.text
+        assert source.source_url in sources.text
+        assert source.version in sources.text
+        assert source.source_locator in sources.text
+        if source.jurisdiction is not None:
+            assert source.jurisdiction in sources.text
+        if source.reference_type is not None:
+            assert source.reference_type in sources.text
+        if source.scope_note is not None:
+            assert source.scope_note in sources.text
+        assert source.source_key not in sources.text

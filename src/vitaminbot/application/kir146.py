@@ -246,31 +246,33 @@ class NutrientCardRenderer:
             return render.screen
 
         lines = [
-            "Reference values",
+            "Справочные значения",
             "",
-            "Typed governed records only; these are not personalized dose recommendations.",
+            "Показываются только принятые справочные значения. "
+            "Это не персональные рекомендации по дозе.",
             "",
         ]
         for snapshot in render.binding.references:
-            lines.append(f"• {snapshot.subject_key} / {snapshot.display_line}")
+            lines.append(f"• {snapshot.display_line}")
             if snapshot.record_id is not None:
+                if snapshot.source_title is not None:
+                    lines.append(f"  Источник: {snapshot.source_title}")
+                if snapshot.source_version is not None:
+                    lines.append(f"  Версия источника: {snapshot.source_version}")
+                if snapshot.source_locator is not None:
+                    lines.append(f"  Раздел источника: {snapshot.source_locator}")
+                if snapshot.source_url is not None:
+                    lines.append(f"  {snapshot.source_url}")
+            else:
                 lines.append(
-                    f"  record={snapshot.record_id}; dataset={snapshot.dataset_version}; "
-                    f"context={snapshot.context_revision}"
+                    "  Применимость к текущему контексту не подтверждена; "
+                    "значение по умолчанию не подставлено."
                 )
-            elif snapshot.reasons:
-                lines.append(f"  applicability={', '.join(snapshot.reasons)}")
-        lines.extend(
-            [
-                "",
-                "A missing or non-matching record is not replaced with an adult/default value.",
-            ]
-        )
         return Screen(
             text=self._bounded_text(lines),
             rows=(
-                (Button("Why / Sources", f"k146s:{render.binding.substance_key}"),),
-                (Button("Back", f"k146c:{render.binding.substance_key}"),),
+                (Button("Почему? / Источники", f"k146s:{render.binding.substance_key}"),),
+                (Button("Назад", f"k146c:{render.binding.substance_key}"),),
             ),
         )
 
@@ -279,25 +281,25 @@ class NutrientCardRenderer:
             return render.screen
 
         lines = [
-            "Why / Sources",
+            "Почему? / Источники",
             "",
-            f"content={render.binding.content_id} @ {render.binding.content_version}",
-            f"dataset={render.binding.dataset_version}",
-            f"context_revision={render.binding.context_revision}",
+            "Научные формулировки ниже взяты из принятой научной карточки. "
+            "Показаны только сведения, необходимые для проверки источников.",
             "",
-            "Approved claims:",
+            "Утверждения и ограничения:",
         ]
         for claim in render.binding.claims:
-            lines.append(
-                f"• {claim.claim_id} [{claim.claim_type}] → {', '.join(claim.source_refs)}"
-            )
-        lines.extend(["", "Approved content sources:"])
+            lines.append(f"• {claim.plain_text}")
+            for limitation in claim.limitations:
+                lines.append(f"  Ограничение: {limitation}")
+
+        lines.extend(["", "Источники утверждений:"])
         for source in render.binding.claim_sources:
             lines.extend(
                 [
-                    f"• {source.source_key} — {source.title}",
-                    f"  {source.authority}; {source.jurisdiction_scope}",
-                    f"  version: {source.source_version}",
+                    f"• {source.title}",
+                    f"  {source.authority}; область: {source.jurisdiction_scope}",
+                    f"  версия: {source.source_version}",
                     f"  {source.source_url}",
                 ]
             )
@@ -306,40 +308,34 @@ class NutrientCardRenderer:
             snapshot for snapshot in render.binding.references if snapshot.record_id is not None
         )
         if matched:
-            lines.extend(["", "Exact reference/safety records:"])
+            lines.extend(["", "Справочные значения и данные для оценки безопасности:"])
             for snapshot in matched:
-                lines.extend(
-                    [
-                        (
-                            f"• {snapshot.record_id} — {snapshot.reference_type}; "
-                            f"status={snapshot.record_status}"
-                        ),
-                        (
-                            f"  source={snapshot.source_key}; version={snapshot.source_version}; "
-                            f"applicability={snapshot.applicability_status}"
-                        ),
-                        f"  locator={snapshot.source_locator}",
-                        f"  {snapshot.source_url}",
-                    ]
-                )
+                lines.append(f"• {snapshot.display_line}")
+                if snapshot.source_title is not None:
+                    lines.append(f"  Источник: {snapshot.source_title}")
+                if snapshot.source_version is not None:
+                    lines.append(f"  версия: {snapshot.source_version}")
+                if snapshot.source_locator is not None:
+                    lines.append(f"  раздел: {snapshot.source_locator}")
+                if snapshot.source_url is not None:
+                    lines.append(f"  {snapshot.source_url}")
+
         unresolved = tuple(
             snapshot for snapshot in render.binding.references if snapshot.record_id is None
         )
         if unresolved:
-            lines.extend(["", "Unresolved reference/applicability state:"])
+            lines.extend(["", "Неразрешённая применимость:"])
             for snapshot in unresolved:
                 lines.append(
-                    f"• {snapshot.subject_key}/{snapshot.reference_type}: "
-                    f"{snapshot.lookup_status}; reasons={','.join(snapshot.reasons) or 'none'}"
+                    f"• {snapshot.reference_type}: значение не применено к текущему "
+                    "контексту; значение для взрослого человека по умолчанию не подставлялось."
                 )
-                if snapshot.candidate_record_ids:
-                    lines.append(f"  candidate_records={','.join(snapshot.candidate_record_ids)}")
-            lines.append("No unresolved value was replaced by a default.")
+
         return Screen(
             text=self._bounded_text(lines),
             rows=(
-                (Button("Reference values", f"k146r:{render.binding.substance_key}"),),
-                (Button("Back", f"k146c:{render.binding.substance_key}"),),
+                (Button("Справочные значения", f"k146r:{render.binding.substance_key}"),),
+                (Button("Назад", f"k146c:{render.binding.substance_key}"),),
             ),
         )
 
@@ -1079,13 +1075,14 @@ class KIR146Controller:
         rows = tuple(
             (Button(content.display_name, f"k146c:{content.substance_key}"),) for content in active
         )
-        rows += ((Button("DHA (specific scope)", "k146c:dha"),),)
+        rows += ((Button("DHA (отдельная область применения)", "k146c:dha"),),)
         return Screen(
             text=(
-                "Nutrient information\n\n"
-                "Choose an approved educational card. Reference/safety values are shown only "
-                "when the governed applicability context resolves; no adult/default context "
-                "is guessed."
+                "Справочная информация\n\n"
+                "Выберите принятую карточку вещества. Научный текст показывается только "
+                "из принятой научной карточки; VitaminBot не создаёт перевод или замену сам.\n\n"
+                "Если применимость справочного значения не определена, контекст взрослого "
+                "человека по умолчанию не подставляется."
             ),
             rows=rows,
         )
@@ -1095,11 +1092,11 @@ class KIR146Controller:
         if key is None:
             return Screen(
                 text=(
-                    "Nutrient information unavailable\n\n"
-                    "No approved governed card matches that nutrient. VitaminBot did not "
-                    "synthesize a substitute."
+                    "Справочная информация недоступна\n\n"
+                    "Подходящей принятой карточки для этого вещества нет. "
+                    "VitaminBot не создал научную замену."
                 ),
-                rows=((Button("Available cards", "k146list"),),),
+                rows=((Button("Доступные карточки", "k146list"),),),
             )
         render = self._current_render(telegram_user_id, key)
         prompt = self._jit_prompt(telegram_user_id, render)
@@ -1111,17 +1108,20 @@ class KIR146Controller:
         parts = data.split(":", 1)
         if len(parts) != 2:
             return Screen(
-                text="This nutrient-card action is not valid.",
-                rows=((Button("Available cards", "k146list"),),),
+                text=(
+                    "Этот экран справочной информации уже недействителен. "
+                    "Научная замена не была создана."
+                ),
+                rows=((Button("Доступные карточки", "k146list"),),),
             )
         action, key = parts
         if self._renderer.registry.current(key, locale="en") is None:
             return Screen(
                 text=(
-                    "This nutrient-card action is stale or unsupported. "
-                    "No substitute scientific content was shown."
+                    "Эта карточка устарела или больше не поддерживается. "
+                    "VitaminBot не показал вместо неё другой научный контент."
                 ),
-                rows=((Button("Available cards", "k146list"),),),
+                rows=((Button("Доступные карточки", "k146list"),),),
             )
         render = self._current_render(telegram_user_id, key)
         if action == "k146c":
@@ -1132,8 +1132,10 @@ class KIR146Controller:
         if action == "k146s":
             return self._renderer.sources_screen(render)
         return Screen(
-            text="This nutrient-card action is not valid.",
-            rows=((Button("Available cards", "k146list"),),),
+            text=(
+                "Это действие справочной карточки недействительно. Научный контент не был изменён."
+            ),
+            rows=((Button("Доступные карточки", "k146list"),),),
         )
 
     def _current_render(self, telegram_user_id: int, key: str) -> CardRender:

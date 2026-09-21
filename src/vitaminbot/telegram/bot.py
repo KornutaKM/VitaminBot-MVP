@@ -29,7 +29,10 @@ from vitaminbot.persistence.kir116 import KIR116Store
 from vitaminbot.persistence.kir120 import KIR120Store, RoutineTimes
 from vitaminbot.persistence.kir122 import KIR122Store
 from vitaminbot.persistence.kir174 import KIR174Store
-from vitaminbot.telegram.presentation import localize_operational_screen
+from vitaminbot.telegram.presentation import (
+    project_v02_scientific_shell,
+    project_v02_screen,
+)
 from vitaminbot.telegram.reminders import TelegramReminderRunner
 
 
@@ -59,11 +62,63 @@ def _vertical_controller(context: ContextTypes.DEFAULT_TYPE) -> KIR122Controller
     return None if value is None else cast(KIR122Controller, value)
 
 
-def _operational_screen(context: ContextTypes.DEFAULT_TYPE, screen: Screen) -> Screen:
+def _only_applicability_actions(screen: Screen) -> bool:
+    callbacks = tuple(button.callback_data for row in screen.rows for button in row)
+    return bool(callbacks) and all(value.startswith("k174") for value in callbacks)
+
+
+def _operational_screen(
+    context: ContextTypes.DEFAULT_TYPE,
+    screen: Screen,
+    *,
+    surface: str | None = None,
+) -> Screen:
     controller = _vertical_controller(context)
     if controller is not None:
         screen = controller.decorate_operational_screen(screen)
-    return localize_operational_screen(screen)
+    if _only_applicability_actions(screen):
+        return screen
+    return project_v02_screen(screen, surface=surface)
+
+
+def _scientific_screen(screen: Screen) -> Screen:
+    if _only_applicability_actions(screen):
+        return screen
+    return project_v02_scientific_shell(screen)
+
+
+def _callback_surface(data: str) -> str | None:
+    if data == "ls":
+        return "supplements"
+    if data == "pf":
+        return "profile"
+    if data in {"a", "h", "m", "x"} or data.startswith(("mu:", "me:", "mc:")):
+        return "add"
+    if data.startswith(("o:", "p:", "pb:", "en:", "es:", "eu:", "rp:", "rc:")):
+        return "supplement"
+    if data == "k120today" or data.startswith(("k120t:", "k120s:", "k120l:")):
+        return "today"
+    if data == "k120p" or data.startswith(("k120b:", "k120e:")):
+        return "plan"
+    if data == "k120h" or data.startswith("k120c:"):
+        return "history"
+    if data.startswith("k120q:"):
+        return "history_confirmation"
+    if data.startswith("k120w:"):
+        return "why"
+    if data in {"k122comp", "k122cancel"} or data.startswith(("k122c:", "k122n:", "k122ok:")):
+        return "composition"
+    if data == "k122tot":
+        return "totals"
+    if data == "k122rules":
+        return "rules"
+    if data.startswith("k122why:"):
+        return "sources"
+    if data == "k122safe":
+        return "safety"
+    if data.startswith("k122src:"):
+        return "sources"
+    return None
 
 
 def _keyboard(screen: Screen) -> InlineKeyboardMarkup | None:
@@ -119,12 +174,28 @@ def _telegram_user_id(update: Update) -> int | None:
     return None if user is None else user.id
 
 
+def _resolve_start_screen(
+    base: KIR116Controller,
+    schedule: KIR120Controller | None,
+    telegram_user_id: int,
+) -> tuple[Screen, str]:
+    if base.has_supplements(telegram_user_id) and schedule is not None:
+        return schedule.today(telegram_user_id), "today"
+    return base.start(telegram_user_id), "start"
+
+
 async def _start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     telegram_user_id = _telegram_user_id(update)
     if telegram_user_id is None:
         return
-    screen = await asyncio.to_thread(_controller(context).start, telegram_user_id)
-    await _reply(update, _operational_screen(context, screen))
+
+    screen, surface = await asyncio.to_thread(
+        _resolve_start_screen,
+        _controller(context),
+        _schedule_controller(context),
+        telegram_user_id,
+    )
+    await _reply(update, _operational_screen(context, screen, surface=surface))
 
 
 async def _add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -132,7 +203,7 @@ async def _add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if telegram_user_id is None:
         return
     screen = await asyncio.to_thread(_controller(context).add, telegram_user_id)
-    await _reply(update, _operational_screen(context, screen))
+    await _reply(update, _operational_screen(context, screen, surface="add"))
 
 
 async def _supplements(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -140,7 +211,7 @@ async def _supplements(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if telegram_user_id is None:
         return
     screen = await asyncio.to_thread(_controller(context).supplements, telegram_user_id)
-    await _reply(update, _operational_screen(context, screen))
+    await _reply(update, _operational_screen(context, screen, surface="supplements"))
 
 
 async def _profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -153,47 +224,36 @@ async def _profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             text=screen.text,
             rows=screen.rows + ((Button("Контекст применимости", "k174profile"),),),
         )
-    await _reply(update, _operational_screen(context, screen))
+    await _reply(update, _operational_screen(context, screen, surface="profile"))
 
 
 async def _help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     telegram_user_id = _telegram_user_id(update)
     if telegram_user_id is None:
         return
-    if _vertical_controller(context) is not None:
-        screen = Screen(
-            text=(
-                "VitaminBot — помощь\n\n"
-                "• /today — что запланировано на сегодня\n"
-                "• /add — добавить добавку\n"
-                "• /composition — подтвердить состав с этикетки\n"
-                "• /totals — дневные итоги и вклад добавок\n"
-                "• /safety — справочные значения и ограничения\n"
-                "• /plan — повторяющийся план\n"
-                "• /history — история и исправления\n"
-                "• /profile — технические настройки\n"
-                "• /nutrient <name> — принятая справочная карточка с источниками\n\n"
-                "Неизвестное состояние не считается безопасным, а отсутствие правила "
-                "не означает совместимость."
-            ),
-            rows=(
-                (Button("Сегодня", "k120today"), Button("Итоги", "k122tot")),
-                (Button("Добавить добавку", "a"), Button("Состав", "k122comp")),
-            ),
-        )
-    else:
-        screen = await asyncio.to_thread(_controller(context).help, telegram_user_id)
-        if _nutrient_controller(context) is not None:
-            screen = Screen(
-                text=screen.text
-                + (
-                    "\n\nNutrient cards: /nutrient <name> — approved educational "
-                    "content with provenance."
-                ),
-                rows=screen.rows,
-            )
-        screen = _operational_screen(context, screen)
-    await _reply(update, screen)
+    await asyncio.to_thread(_controller(context).start, telegram_user_id)
+    screen = Screen(
+        text=(
+            "VitaminBot — помощь\n\n"
+            "Основные разделы:\n"
+            "• /today — что запланировано на сегодня\n"
+            "• /add — добавить добавку\n"
+            "• /supplements — добавки и их подтверждённые данные\n"
+            "• /plan — повторяющийся план\n"
+            "• /history — история и исправления\n"
+            "• /profile — технические настройки\n"
+            "• /help — эта справка\n\n"
+            "Если данных или доказательств недостаточно, VitaminBot покажет это явно. "
+            "Отсутствие поддерживаемого правила не означает совместимость или безопасность."
+        ),
+        rows=(
+            (Button("Сегодня", "k120today"),),
+            (Button("Добавить добавку", "a"),),
+            (Button("Добавки", "ls"), Button("План", "k120p")),
+            (Button("История", "k120h"),),
+        ),
+    )
+    await _reply(update, project_v02_screen(screen, surface="help"))
 
 
 async def _nutrient(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -206,7 +266,7 @@ async def _nutrient(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         screen = await asyncio.to_thread(controller.open, telegram_user_id, query)
     else:
         screen = controller.list_cards()
-    await _reply(update, screen)
+    await _reply(update, _scientific_screen(screen))
 
 
 async def _cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -265,7 +325,7 @@ async def _today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if telegram_user_id is None or controller is None:
         return
     screen = await asyncio.to_thread(controller.today, telegram_user_id)
-    await _reply(update, _operational_screen(context, screen))
+    await _reply(update, _operational_screen(context, screen, surface="today"))
 
 
 async def _plan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -274,7 +334,7 @@ async def _plan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if telegram_user_id is None or controller is None:
         return
     screen = await asyncio.to_thread(controller.plan, telegram_user_id)
-    await _reply(update, _operational_screen(context, screen))
+    await _reply(update, _operational_screen(context, screen, surface="plan"))
 
 
 async def _history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -283,7 +343,7 @@ async def _history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if telegram_user_id is None or controller is None:
         return
     screen = await asyncio.to_thread(controller.history, telegram_user_id)
-    await _reply(update, _operational_screen(context, screen))
+    await _reply(update, _operational_screen(context, screen, surface="history"))
 
 
 async def _composition(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -292,7 +352,7 @@ async def _composition(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if telegram_user_id is None or controller is None:
         return
     screen = await asyncio.to_thread(controller.composition, telegram_user_id)
-    await _reply(update, screen)
+    await _reply(update, _operational_screen(context, screen, surface="composition"))
 
 
 async def _totals(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -301,7 +361,7 @@ async def _totals(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if telegram_user_id is None or controller is None:
         return
     screen = await asyncio.to_thread(controller.totals, telegram_user_id)
-    await _reply(update, screen)
+    await _reply(update, _operational_screen(context, screen, surface="totals"))
 
 
 async def _safety(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -310,7 +370,7 @@ async def _safety(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if telegram_user_id is None or controller is None:
         return
     screen = await asyncio.to_thread(controller.safety, telegram_user_id)
-    await _reply(update, screen)
+    await _reply(update, _operational_screen(context, screen, surface="safety"))
 
 
 async def _text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -352,7 +412,10 @@ async def _text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 message.text,
                 action_key=action_key,
             )
-            await _reply(update, _operational_screen(context, screen))
+            await _reply(
+                update,
+                _operational_screen(context, screen, surface="composition"),
+            )
             return
 
     schedule_controller = _schedule_controller(context)
@@ -368,7 +431,7 @@ async def _text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 message.text,
                 action_key=action_key,
             )
-            await _reply(update, _operational_screen(context, screen))
+            await _reply(update, _operational_screen(context, screen, surface="plan"))
             return
 
     screen = await asyncio.to_thread(
@@ -392,8 +455,10 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     nutrient_controller = _nutrient_controller(context)
     schedule_controller = _schedule_controller(context)
     applicability_controller = _applicability_controller(context)
-    operational = False
+    scientific = False
+    applicability_action = False
     if query.data.startswith("k174") and applicability_controller is not None:
+        applicability_action = True
         screen = await asyncio.to_thread(
             applicability_controller.callback,
             telegram_user_id,
@@ -408,13 +473,13 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             action_key=action_key,
         )
     elif query.data.startswith("k146") and nutrient_controller is not None:
+        scientific = True
         screen = await asyncio.to_thread(
             nutrient_controller.callback,
             telegram_user_id,
             query.data,
         )
     elif query.data.startswith("k120") and schedule_controller is not None:
-        operational = True
         screen = await asyncio.to_thread(
             schedule_controller.callback,
             telegram_user_id,
@@ -422,15 +487,21 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             action_key=action_key,
         )
     else:
-        operational = True
         screen = await asyncio.to_thread(
             _controller(context).callback,
             telegram_user_id,
             query.data,
             action_key=action_key,
         )
-    if operational:
-        screen = _operational_screen(context, screen)
+    if not applicability_action:
+        if scientific:
+            screen = _scientific_screen(screen)
+        else:
+            screen = _operational_screen(
+                context,
+                screen,
+                surface=_callback_surface(query.data),
+            )
     await _project_callback(update, context, screen)
 
 
