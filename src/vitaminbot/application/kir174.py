@@ -216,14 +216,12 @@ class KIR174Controller:
         record = self._store.iron_supervision(user_id, f"iron:{scope_token}")
         if record.under_medical_supervision is None:
             text = (
-                "Контекст текущего приёма железа\n\n"
-                "Статус медицинского наблюдения не подтверждён."
+                "Контекст текущего приёма железа\n\nСтатус медицинского наблюдения не подтверждён."
             )
         else:
             answer = "да" if record.under_medical_supervision else "нет"
             text = (
-                f"Контекст текущего приёма железа\n\n"
-                f"Приём под медицинским наблюдением: {answer}."
+                f"Контекст текущего приёма железа\n\nПриём под медицинским наблюдением: {answer}."
             )
         rows: list[tuple[Button, ...]] = [
             (
