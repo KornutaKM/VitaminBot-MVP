@@ -435,8 +435,9 @@ def test_operational_localization_preserves_short_shell_tokens_in_product_identi
         vertical.decorate_operational_screen(renamed),
         surface="supplement",
     )
-    assert adversarial_name in projected_detail.text
-    assert mutated_name not in projected_detail.text
+    identity_bytes = adversarial_name.encode("utf-8")
+    assert identity_bytes in projected_detail.text.encode("utf-8")
+    assert mutated_name.encode("utf-8") not in projected_detail.text.encode("utf-8")
     assert "Ваш план: Утро —" in projected_detail.text
 
     today = schedule.today(
@@ -447,8 +448,8 @@ def test_operational_localization_preserves_short_shell_tokens_in_product_identi
         vertical.decorate_operational_screen(today),
         surface="today",
     )
-    assert f"• Утро — {adversarial_name}:" in projected_today.text
-    assert mutated_name not in projected_today.text
+    assert f"• Утро — {adversarial_name}:".encode("utf-8") in projected_today.text.encode("utf-8")
+    assert mutated_name.encode("utf-8") not in projected_today.text.encode("utf-8")
     assert "[ожидает]" in projected_today.text
 
     plan = schedule.plan(telegram_user_id)
@@ -457,8 +458,11 @@ def test_operational_localization_preserves_short_shell_tokens_in_product_identi
         surface="plan",
     )
     assert projected_plan.text.startswith("План")
-    assert f"Ваша настройка: {adversarial_name}:" in projected_plan.text
-    assert mutated_name not in projected_plan.text
+    assert (
+        f"Ваша настройка: {adversarial_name}:".encode("utf-8")
+        in projected_plan.text.encode("utf-8")
+    )
+    assert mutated_name.encode("utf-8") not in projected_plan.text.encode("utf-8")
     assert " — Утро" in projected_plan.text
     assert "Это ваши повторяющиеся настройки режима." in projected_plan.text
 
@@ -474,8 +478,8 @@ def test_operational_localization_preserves_short_shell_tokens_in_product_identi
         surface="history",
     )
     assert projected_history.text.startswith("История")
-    assert f"• {adversarial_name}:" in projected_history.text
-    assert mutated_name not in projected_history.text
+    assert f"• {adversarial_name}:".encode("utf-8") in projected_history.text.encode("utf-8")
+    assert mutated_name.encode("utf-8") not in projected_history.text.encode("utf-8")
     assert " — принято" in projected_history.text
 
 
