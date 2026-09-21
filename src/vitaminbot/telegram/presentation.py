@@ -462,6 +462,9 @@ def localize_operational_screen(
 def _button_label(button: Button) -> str:
     label = button.label
     data = button.callback_data
+    if data.startswith("o:") and label.startswith("Open "):
+        return "Открыть " + label.removeprefix("Open ")
+
     exact = {
         "Add first supplement": "Добавить первую добавку",
         "How it works": "Как это работает",
