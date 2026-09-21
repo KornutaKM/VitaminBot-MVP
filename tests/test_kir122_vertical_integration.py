@@ -842,7 +842,7 @@ def test_rules_matched_preference_preserves_dynamic_identity_byte_exact(
         "a",
         action_key="cb:rules-identity:add-second",
     )
-    second_manual = base.callback(
+    base.callback(
         telegram_user_id,
         _button(add_second, "Enter manually"),
         action_key="cb:rules-identity:second-manual",
@@ -852,7 +852,7 @@ def test_rules_matched_preference_preserves_dynamic_identity_byte_exact(
         "Rule Pair Iron",
         action_key="msg:rules-identity:second-name",
     )
-    second_serving = base.callback(
+    base.callback(
         telegram_user_id,
         _button(second_units, "Capsule"),
         action_key="cb:rules-identity:second-unit",
