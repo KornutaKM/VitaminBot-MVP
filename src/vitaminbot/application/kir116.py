@@ -87,6 +87,10 @@ class KIR116Controller:
             rows=((Button("Add supplement", "a"),),),
         )
 
+    def has_supplements(self, telegram_user_id: int) -> bool:
+        user_id = self._store.ensure_user(telegram_user_id)
+        return bool(self._store.list_supplements(user_id))
+
     def add(self, telegram_user_id: int) -> Screen:
         self._store.ensure_user(telegram_user_id)
         return Screen(
