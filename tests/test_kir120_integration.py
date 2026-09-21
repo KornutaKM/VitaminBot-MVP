@@ -579,14 +579,7 @@ def test_runner_revalidates_group_after_initial_grouping_before_send(
     kir116, _, store, _, _ = kir120_system
     telegram_user_id = 701008
     user_id = _prepare_planned_user(kir116, store, telegram_user_id)
-    now = datetime(2026, 9, 20, 6, 0, tzinfo=UTC)
-
-    class _FixedClock(datetime):
-        @classmethod
-        def now(cls, tz: object = None) -> datetime:
-            return now
-
-    monkeypatch.setattr(reminder_module, "datetime", _FixedClock)
+    now = datetime.now(UTC)
     occurrence = store.today(user_id, now)[0]
     original_validate = store.validate_claim
     validation_calls = 0
@@ -637,7 +630,7 @@ def test_runner_suppresses_group_when_claim_lease_expires_before_send(
     kir116, _, store, database_url, schema = kir120_system
     telegram_user_id = 701009
     user_id = _prepare_planned_user(kir116, store, telegram_user_id)
-    now = datetime(2026, 9, 20, 6, 0, tzinfo=UTC)
+    now = datetime.now(UTC)
     occurrence = store.today(user_id, now)[0]
 
     class _ExpiredClock(datetime):
