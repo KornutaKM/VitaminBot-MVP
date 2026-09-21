@@ -257,9 +257,7 @@ def test_not_now_writes_no_applicability_fact_or_revision(
     with psycopg.connect(database_url) as conn:
         conn.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(schema)))
         after_receipts = conn.execute("SELECT count(*) FROM bot_action_receipts").fetchone()
-        after_profiles = conn.execute(
-            "SELECT count(*) FROM user_applicability_profiles"
-        ).fetchone()
+        after_profiles = conn.execute("SELECT count(*) FROM user_applicability_profiles").fetchone()
 
     assert "Ничего не сохранено" in skipped.text
     assert not controller.has_pending_text(174001)
@@ -281,7 +279,6 @@ def test_not_now_writes_no_applicability_fact_or_revision(
     )
     assert lookup.status is LookupStatus.INDETERMINATE
     assert ApplicabilityReason.MISSING_AGE in lookup.reasons
-
 
 
 def test_age_correction_and_deletion_change_context_revision_and_restore_unknown(
@@ -625,9 +622,12 @@ def test_non_user_gaps_do_not_create_profile_questions_or_hidden_exposure_basis(
         )
         is None
     )
-    assert controller.bound_context(
-        174001, base_revision="base:no-derived"
-    ).iron_exposure.exposure_basis is None
+    assert (
+        controller.bound_context(
+            174001, base_revision="base:no-derived"
+        ).iron_exposure.exposure_basis
+        is None
+    )
     assert controller.card_context(174001, "vitamin_c").exposure.exposure_basis is None
     assert store.profile(user_id).revision == 0
 
@@ -723,8 +723,7 @@ def test_iron_supervision_delete_restores_unknown_and_advances_scope_revision(
     assert after.iron_scope_revision == before.iron_scope_revision + 1
     assert after.context_revision != before.context_revision
     assert (
-        store.iron_supervision(user_id, before.iron_scope_key).revision
-        == after.iron_scope_revision
+        store.iron_supervision(user_id, before.iron_scope_key).revision == after.iron_scope_revision
     )
 
 
@@ -735,8 +734,7 @@ def test_age_precision_contract_requires_review_for_new_non_year_boundary(
     record = next(
         record
         for record in EU_EFSA_REFERENCE_DATASET.records
-        if record.population.age_min_months is not None
-        and record.population.age_min_months >= 24
+        if record.population.age_min_months is not None and record.population.age_min_months >= 24
     )
     bad = replace(
         record,
@@ -769,4 +767,3 @@ def test_raw_age_text_and_sensitive_answers_do_not_enter_normal_logs(
 
     rendered_logs = "\n".join(record.getMessage() for record in caplog.records)
     assert "47" not in rendered_logs
-
