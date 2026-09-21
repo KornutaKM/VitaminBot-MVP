@@ -784,6 +784,110 @@ def test_operational_localization_preserves_valid_dynamic_names_with_status_word
     assert " — принято" in localized_history.text
 
 
+@pytest.mark.parametrize(
+    "adversarial_name",
+    (
+        "Product facts and your plan are stored separately.",
+        "Formula | Product facts and your plan are stored separately. | Daily",
+    ),
+)
+def test_rules_matched_preference_preserves_dynamic_identity_byte_exact(
+    vertical_stack: tuple[
+        KIR116Controller,
+        KIR120Controller,
+        KIR122Controller,
+        KIR116Store,
+    ],
+    adversarial_name: str,
+) -> None:
+    base, _, vertical, store = vertical_stack
+    telegram_user_id = 122016
+    _create_clean_account(base, telegram_user_id)
+
+    supplements = base.supplements(telegram_user_id)
+    detail = base.callback(
+        telegram_user_id,
+        _callback_with_prefix(supplements, "o:"),
+        action_key="cb:rules-identity:open",
+    )
+    base.callback(
+        telegram_user_id,
+        _callback_with_prefix(detail, "en:"),
+        action_key="cb:rules-identity:edit-name",
+    )
+    renamed = base.text(
+        telegram_user_id,
+        adversarial_name,
+        action_key="msg:rules-identity:rename",
+    )
+
+    base.callback(
+        telegram_user_id,
+        _callback_with_prefix(renamed, "p:"),
+        action_key="cb:rules-identity:edit-plan",
+    )
+    bucket = base.text(
+        telegram_user_id,
+        "2",
+        action_key="msg:rules-identity:plan-quantity",
+    )
+    base.callback(
+        telegram_user_id,
+        _button(bucket, "Morning"),
+        action_key="cb:rules-identity:save-plan",
+    )
+
+    composition = vertical.composition(telegram_user_id)
+    picker = vertical.callback(
+        telegram_user_id,
+        _callback_with_prefix(composition, "k122c:"),
+        action_key="cb:rules-identity:composition",
+    )
+    amount_prompt = vertical.callback(
+        telegram_user_id,
+        _button(picker, "Кальций"),
+        action_key="cb:rules-identity:calcium",
+    )
+    assert f"Кальций — {adversarial_name}".encode() in amount_prompt.text.encode()
+
+    review = vertical.text(
+        telegram_user_id,
+        "1000 mg",
+        action_key="msg:rules-identity:amount",
+    )
+    vertical.callback(
+        telegram_user_id,
+        _button(review, "Подтвердить"),
+        action_key="cb:rules-identity:confirm",
+    )
+
+    user_id = store.ensure_user(telegram_user_id)
+    view = vertical._build_view(user_id)
+    assert any(rule.status.value == "matched_preference" for rule in view.rule_result.scheduling_results)
+
+    raw_rules = vertical.rules(telegram_user_id)
+    projected_rules = project_v02_screen(
+        vertical.decorate_operational_screen(raw_rules),
+        surface="rules",
+    )
+
+    assert f"• {adversarial_name}:".encode() in projected_rules.text.encode()
+    assert (
+        "найдено доказательное предпочтение по распределению уже запланированных единиц. "
+        "Оно не создаёт новую дозу."
+    ) in projected_rules.text
+    assert "Важно: Это предпочтение, а не медицинская необходимость." in projected_rules.text
+    assert "Важно: Правило не создаёт и не изменяет персональную дозу." in projected_rules.text
+    assert "Отсутствие правила не означает, что сочетание безопасно." in projected_rules.text
+    assert _callback_with_prefix(projected_rules, "k122why:").startswith("k122why:")
+    assert any(
+        button.label == "Источники правила"
+        for row in projected_rules.rows
+        for button in row
+        if button.callback_data.startswith("k122why:")
+    )
+
+
 def test_rule_sources_keep_full_accepted_provenance(
     vertical_stack: tuple[
         KIR116Controller,
