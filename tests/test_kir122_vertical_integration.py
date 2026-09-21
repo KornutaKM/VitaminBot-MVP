@@ -480,6 +480,113 @@ def test_operational_localization_preserves_short_shell_tokens_in_product_identi
     assert " — принято" in projected_history.text
 
 
+@pytest.mark.parametrize(
+    "adversarial_name",
+    (
+        "Plan",
+        "Today",
+        "History",
+        "Profile",
+        "Formula — Morning",
+    ),
+)
+def test_shell_role_localization_preserves_confirmed_identity_byte_exact_across_surfaces(
+    vertical_stack: tuple[
+        KIR116Controller,
+        KIR120Controller,
+        KIR122Controller,
+        KIR116Store,
+    ],
+    adversarial_name: str,
+) -> None:
+    base, schedule, vertical, _store = vertical_stack
+    telegram_user_id = 122014
+    _create_clean_account(base, telegram_user_id)
+
+    supplements = base.supplements(telegram_user_id)
+    detail = base.callback(
+        telegram_user_id,
+        _button(supplements, "Open Example Magnesium"),
+        action_key=f"cb:role-collision:open:{adversarial_name}",
+    )
+    base.callback(
+        telegram_user_id,
+        _button(detail, "Edit name"),
+        action_key=f"cb:role-collision:edit:{adversarial_name}",
+    )
+    renamed = base.text(
+        telegram_user_id,
+        adversarial_name,
+        action_key=f"msg:role-collision:rename:{adversarial_name}",
+    )
+
+    identity_bytes = adversarial_name.encode()
+    projected_detail = project_v02_screen(
+        vertical.decorate_operational_screen(renamed),
+        surface="supplement",
+    )
+    detail_lines = projected_detail.text.splitlines()
+    assert adversarial_name in detail_lines
+    assert identity_bytes in projected_detail.text.encode()
+    assert "Ваш план: Утро —" in projected_detail.text
+
+    today = schedule.today(
+        telegram_user_id,
+        now=datetime(2026, 9, 20, 11, 0, tzinfo=UTC),
+    )
+    projected_today = project_v02_screen(
+        vertical.decorate_operational_screen(today),
+        surface="today",
+    )
+    assert projected_today.text.startswith("Сегодня")
+    assert f"• Утро — {adversarial_name}:".encode() in projected_today.text.encode()
+
+    plan = schedule.plan(telegram_user_id)
+    projected_plan = project_v02_screen(
+        vertical.decorate_operational_screen(plan),
+        surface="plan",
+    )
+    assert projected_plan.text.startswith("План")
+    assert f"Ваша настройка: {adversarial_name}:".encode() in projected_plan.text.encode()
+    assert f"Ваша настройка: {adversarial_name}: 1.5 capsule — Утро".encode() in (
+        projected_plan.text.encode()
+    )
+
+    schedule.callback(
+        telegram_user_id,
+        _button(today, "Taken"),
+        action_key=f"cb:role-collision:taken:{adversarial_name}",
+        now=datetime(2026, 9, 20, 12, 0, tzinfo=UTC),
+    )
+    history = schedule.history(telegram_user_id)
+    projected_history = project_v02_screen(
+        vertical.decorate_operational_screen(history),
+        surface="history",
+    )
+    assert projected_history.text.startswith("История")
+    assert f"• {adversarial_name}:".encode() in projected_history.text.encode()
+
+    current_list = base.supplements(telegram_user_id)
+    current_detail = base.callback(
+        telegram_user_id,
+        _button(current_list, f"Open {adversarial_name}"),
+        action_key=f"cb:role-collision:reopen:{adversarial_name}",
+    )
+    remove_confirmation = base.callback(
+        telegram_user_id,
+        _button(current_detail, "Remove supplement…"),
+        action_key=f"cb:role-collision:remove-preview:{adversarial_name}",
+    )
+    projected_remove = project_v02_screen(
+        vertical.decorate_operational_screen(remove_confirmation),
+        surface="supplement",
+    )
+    assert projected_remove.text.splitlines()[0].encode() == f"Удалить {adversarial_name}?".encode()
+
+    profile = project_v02_screen(base.profile(telegram_user_id), surface="profile")
+    assert profile.text.startswith("Профиль")
+
+
 def test_operational_localization_preserves_valid_dynamic_names_with_status_words(
     vertical_stack: tuple[
         KIR116Controller,
