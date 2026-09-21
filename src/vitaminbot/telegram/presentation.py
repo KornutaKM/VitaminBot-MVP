@@ -236,12 +236,27 @@ _ROUTINE_BUCKET_LABELS = {
 }
 
 
+def _supplement_structured_fields(lines: list[str]) -> dict[int, str]:
+    for index in range(len(lines) - 2):
+        if (
+            lines[index] == "Status: Confirmed manual entry"
+            and lines[index + 1].startswith("Label serving: ")
+            and lines[index + 2].startswith("Your plan: ")
+        ):
+            return {
+                index: "status",
+                index + 1: "label_serving",
+                index + 2: "plan",
+            }
+    return {}
+
+
 def _localize_structured_shell_line(
     line: str,
     *,
     line_index: int,
     profile_screen: bool,
-    supplement_detail_screen: bool,
+    supplement_field: str | None,
     today_screen: bool,
 ) -> str:
     if profile_screen:
@@ -252,17 +267,19 @@ def _localize_structured_shell_line(
                     value = "Не настроен"
                 return target + value
 
-    if supplement_detail_screen and line_index > 0:
-        if line == "Status: Confirmed manual entry":
-            return "Статус: подтверждённый ручной ввод"
-        if line.startswith("Label serving: "):
-            return "Порция по этикетке: " + line.removeprefix("Label serving: ")
-        if line == "Your plan: Not set":
+    if supplement_field == "status":
+        return "Статус: подтверждённый ручной ввод"
+    if supplement_field == "label_serving":
+        return "Порция по этикетке: " + line.removeprefix("Label serving: ")
+    if supplement_field == "plan":
+        value = line.removeprefix("Your plan: ")
+        if value == "Not set":
             return "Ваш план: Не настроен"
         for source, target in _ROUTINE_BUCKET_LABELS.items():
-            prefix = f"Your plan: {source} — "
-            if line.startswith(prefix):
-                return f"Ваш план: {target} — " + line[len(prefix) :]
+            prefix = f"{source} — "
+            if value.startswith(prefix):
+                return f"Ваш план: {target} — " + value[len(prefix) :]
+        return "Ваш план: " + value
 
     if today_screen:
         for source, target in _ROUTINE_BUCKET_LABELS.items():
@@ -293,7 +310,7 @@ def localize_operational_screen(screen: Screen) -> Screen:
     """
     lines = screen.text.splitlines()
     profile_screen = "Profile" in lines
-    supplement_detail_screen = "Status: Confirmed manual entry" in lines
+    supplement_fields = _supplement_structured_fields(lines)
     today_screen = "Today" in lines
     translated_lines = [
         _localize_structured_status_line(
@@ -302,7 +319,7 @@ def localize_operational_screen(screen: Screen) -> Screen:
                     line,
                     line_index=line_index,
                     profile_screen=profile_screen,
-                    supplement_detail_screen=supplement_detail_screen,
+                    supplement_field=supplement_fields.get(line_index),
                     today_screen=today_screen,
                 ),
                 localized_line,
