@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, replace
 from enum import StrEnum
 
 from vitaminbot.application.kir116 import Button, Screen
@@ -48,6 +49,12 @@ class BoundApplicabilityContext:
     iron_scope_revision: int
 
 
+@dataclass(frozen=True, slots=True)
+class PendingAgeInput:
+    age_unit: str
+    expected_profile_revision: int
+
+
 _REASON_FIELD_ORDER = (
     (ApplicabilityReason.MISSING_AGE, ApplicabilityField.AGE),
     (ApplicabilityReason.MISSING_SEX, ApplicabilityField.SEX),
@@ -69,6 +76,8 @@ class KIR174Controller:
     def __init__(self, *, base_store: KIR116Store, store: KIR174Store) -> None:
         self._base_store = base_store
         self._store = store
+        self._pending_age: dict[int, PendingAgeInput] = {}
+        self._validate_age_precision_contract(EU_EFSA_REFERENCE_DATASET.records)
 
     @staticmethod
     def iron_scope_key(base_revision: str) -> str:
@@ -113,8 +122,8 @@ class KIR174Controller:
         )
 
     def has_pending_text(self, telegram_user_id: int) -> bool:
-        user_id = self._base_store.ensure_user(telegram_user_id)
-        return self._store.age_session(user_id) is not None
+        return telegram_user_id in self._pending_age
+
 
     def text(
         self,
@@ -124,20 +133,29 @@ class KIR174Controller:
         action_key: str,
     ) -> Screen:
         user_id = self._base_store.ensure_user(telegram_user_id)
-        session = self._store.age_session(user_id)
-        if session is None:
+        pending = self._pending_age.get(telegram_user_id)
+        if pending is None:
             return Screen(text="Сейчас я не жду значение применимости.")
         try:
             value = int(text.strip())
         except ValueError:
-            return self._age_input_screen(session.age_unit)
+            return self._age_input_screen(pending.age_unit)
 
         try:
-            self._store.save_age(user_id, action_key, value=value)
+            self._store.save_age(
+                user_id,
+                action_key,
+                value=value,
+                age_unit=pending.age_unit,
+                expected_revision=pending.expected_profile_revision,
+            )
         except ValueError:
-            return self._age_input_screen(session.age_unit)
+            return self._age_input_screen(pending.age_unit)
         except StaleApplicabilityAction:
+            self._pending_age.pop(telegram_user_id, None)
             return self._stale_screen()
+
+        self._pending_age.pop(telegram_user_id, None)
         return Screen(
             text=(
                 "Контекст применимости обновлён. "
@@ -148,6 +166,7 @@ class KIR174Controller:
                 (Button("Карточки нутриентов", "k146list"),),
             ),
         )
+
 
     def profile_screen(self, telegram_user_id: int) -> Screen:
         user_id = self._base_store.ensure_user(telegram_user_id)
@@ -199,27 +218,33 @@ class KIR174Controller:
         record = self._store.iron_supervision(user_id, f"iron:{scope_token}")
         if record.under_medical_supervision is None:
             text = (
-                "Контекст текущего приёма железа\n\nСтатус медицинского наблюдения не подтверждён."
+                "Контекст текущего приёма железа\n\n"
+                "Статус медицинского наблюдения не подтверждён."
             )
         else:
             answer = "да" if record.under_medical_supervision else "нет"
             text = (
-                f"Контекст текущего приёма железа\n\nПриём под медицинским наблюдением: {answer}."
+                f"Контекст текущего приёма железа\n\n"
+                f"Приём под медицинским наблюдением: {answer}."
             )
-        rows = (
+        rows: list[tuple[Button, ...]] = [
             (
                 Button("Да", f"k174med:{scope_token}:{record.revision}:yes"),
                 Button("Нет", f"k174med:{scope_token}:{record.revision}:no"),
             ),
-            (
-                Button(
-                    "Удалить ответ",
-                    f"k174mdel:{scope_token}:{record.revision}",
-                ),
-            ),
-            (Button("Назад", "k122safe"),),
-        )
-        return Screen(text=text, rows=rows)
+        ]
+        if record.under_medical_supervision is not None:
+            rows.append(
+                (
+                    Button(
+                        "Удалить ответ",
+                        f"k174mdel:{scope_token}:{record.revision}",
+                    ),
+                )
+            )
+        rows.append((Button("Назад", "k122safe"),))
+        return Screen(text=text, rows=tuple(rows))
+
 
     def prompt_for_pairs(
         self,
@@ -227,10 +252,17 @@ class KIR174Controller:
         *,
         pairs: tuple[tuple[str, ReferenceType], ...],
         base_revision: str,
+        derived_exposure_by_substance: Mapping[str, ExposureContext] | None = None,
     ) -> Screen | None:
         bound = self.bound_context(telegram_user_id, base_revision=base_revision)
+        derived = derived_exposure_by_substance or {}
         for substance_key, reference_type in pairs:
-            exposure = bound.iron_exposure if substance_key == "iron" else ExposureContext()
+            exposure = derived.get(substance_key, ExposureContext())
+            if substance_key == "iron":
+                exposure = replace(
+                    exposure,
+                    under_medical_supervision=bound.iron_exposure.under_medical_supervision,
+                )
             if self._all_candidates_blocked_by_non_user_gap(
                 substance_key, reference_type, exposure
             ):
@@ -249,6 +281,7 @@ class KIR174Controller:
             if prompt is not None:
                 return prompt
         return None
+
 
     def prompt_for_card(self, telegram_user_id: int, render: CardRender) -> Screen | None:
         if render.binding is None:
@@ -279,8 +312,7 @@ class KIR174Controller:
             if data == "k174profile":
                 return self.profile_screen(telegram_user_id)
             if data == "k174skip":
-                if self._store.age_session(user_id) is not None:
-                    self._store.cancel_age_input(user_id)
+                self._pending_age.pop(telegram_user_id, None)
                 return Screen(
                     text=(
                         "Ничего не сохранено. Применимость остаётся неизвестной, "
@@ -294,11 +326,12 @@ class KIR174Controller:
             if parts[0] == "k174age" and len(parts) == 3:
                 unit = {"m": "months", "y": "years"}[parts[1]]
                 revision = int(parts[2])
-                self._store.begin_age_input(
-                    user_id,
-                    action_key,
+                current = self._store.profile(user_id)
+                if current.revision != revision:
+                    raise StaleApplicabilityAction("applicability profile changed")
+                self._pending_age[telegram_user_id] = PendingAgeInput(
                     age_unit=unit,
-                    expected_revision=revision,
+                    expected_profile_revision=revision,
                 )
                 return self._age_input_screen(unit)
             if parts[0] == "k174set" and len(parts) == 4:
@@ -405,6 +438,20 @@ class KIR174Controller:
                     ),
                 )
         return None
+
+    @staticmethod
+    def _validate_age_precision_contract(records: tuple[ReferenceRecord, ...]) -> None:
+        for record in records:
+            if record.lifecycle is not ReferenceLifecycle.ACTIVE:
+                continue
+            for boundary in (
+                record.population.age_min_months,
+                record.population.age_max_months_exclusive,
+            ):
+                if boundary is not None and boundary >= 24 and boundary % 12 != 0:
+                    raise RuntimeError(
+                        "KIR-173 age precision contract requires re-review for this dataset"
+                    )
 
     @staticmethod
     def _population_profile(record: ApplicabilityProfileRecord) -> PopulationProfile:

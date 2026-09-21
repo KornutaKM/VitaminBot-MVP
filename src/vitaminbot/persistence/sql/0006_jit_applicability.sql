@@ -28,11 +28,3 @@ CREATE TABLE iron_exposure_applicability (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id, scope_key)
 );
-
-CREATE TABLE applicability_input_sessions (
-    user_id UUID PRIMARY KEY
-        REFERENCES users(user_id) ON DELETE CASCADE,
-    age_unit TEXT NOT NULL CHECK (age_unit IN ('months', 'years')),
-    expected_profile_revision BIGINT NOT NULL CHECK (expected_profile_revision >= 0),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);

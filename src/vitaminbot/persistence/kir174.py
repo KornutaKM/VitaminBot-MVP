@@ -34,12 +34,6 @@ class IronSupervisionRecord:
     revision: int
 
 
-@dataclass(frozen=True, slots=True)
-class AgeInputSession:
-    age_unit: str
-    expected_profile_revision: int
-
-
 _PROFILE_FIELDS = frozenset({"sex_applicability", "life_stage", "physiological_condition"})
 _PROFILE_VALUES = {
     "sex_applicability": frozenset({"male", "female"}),
@@ -153,73 +147,8 @@ class KIR174Store:
             revision=int(row["revision"]),
         )
 
-    def age_session(self, user_id: UUID) -> AgeInputSession | None:
-        with self._connect() as conn:
-            row = conn.execute(
-                """
-                SELECT age_unit, expected_profile_revision
-                FROM applicability_input_sessions
-                WHERE user_id = %s
-                """,
-                (user_id,),
-            ).fetchone()
-        if row is None:
-            return None
-        return AgeInputSession(
-            age_unit=str(row["age_unit"]),
-            expected_profile_revision=int(row["expected_profile_revision"]),
-        )
 
-    def begin_age_input(
-        self,
-        user_id: UUID,
-        action_key: str,
-        *,
-        age_unit: str,
-        expected_revision: int,
-    ) -> AgeInputSession:
-        if age_unit not in {"months", "years"}:
-            raise ValueError("unsupported age unit")
-        with self._connect() as conn:
-            claimed = self._claim_action(conn, user_id, action_key, "applicability_age_begin")
-            if claimed:
-                current = self._locked_profile(conn, user_id)
-                if current.revision != expected_revision:
-                    raise StaleApplicabilityAction("applicability profile changed")
-                conn.execute(
-                    """
-                    INSERT INTO applicability_input_sessions (
-                        user_id, age_unit, expected_profile_revision
-                    )
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (user_id) DO UPDATE
-                    SET age_unit = EXCLUDED.age_unit,
-                        expected_profile_revision = EXCLUDED.expected_profile_revision,
-                        updated_at = CURRENT_TIMESTAMP
-                    """,
-                    (user_id, age_unit, expected_revision),
-                )
-            row = conn.execute(
-                """
-                SELECT age_unit, expected_profile_revision
-                FROM applicability_input_sessions
-                WHERE user_id = %s
-                """,
-                (user_id,),
-            ).fetchone()
-            if row is None:
-                raise StaleApplicabilityAction("age input is no longer active")
-            return AgeInputSession(
-                age_unit=str(row["age_unit"]),
-                expected_profile_revision=int(row["expected_profile_revision"]),
-            )
 
-    def cancel_age_input(self, user_id: UUID) -> None:
-        with self._connect() as conn:
-            conn.execute(
-                "DELETE FROM applicability_input_sessions WHERE user_id = %s",
-                (user_id,),
-            )
 
     def save_age(
         self,
@@ -227,51 +156,41 @@ class KIR174Store:
         action_key: str,
         *,
         value: int,
+        age_unit: str,
+        expected_revision: int,
     ) -> ApplicabilityProfileRecord:
+        if age_unit == "months":
+            if value < 0 or value >= 24:
+                raise ValueError("completed months must be from 0 through 23")
+            completed_months, completed_years = value, None
+        elif age_unit == "years":
+            if value < 2:
+                raise ValueError("completed years must be at least 2")
+            completed_months, completed_years = None, value
+        else:
+            raise ValueError("unsupported age unit")
+
         with self._connect() as conn:
             claimed = self._claim_action(conn, user_id, action_key, "applicability_age_save")
-            session_row = conn.execute(
-                """
-                SELECT age_unit, expected_profile_revision
-                FROM applicability_input_sessions
-                WHERE user_id = %s
-                FOR UPDATE
-                """,
-                (user_id,),
-            ).fetchone()
-            if session_row is None:
-                if not claimed:
-                    return self._locked_profile(conn, user_id)
-                raise StaleApplicabilityAction("age input is no longer active")
-
             current = self._locked_profile(conn, user_id)
-            expected_revision = int(session_row["expected_profile_revision"])
+            if not claimed:
+                return current
             if current.revision != expected_revision:
                 raise StaleApplicabilityAction("applicability profile changed")
-
-            age_unit = str(session_row["age_unit"])
-            if age_unit == "months":
-                if value < 0 or value >= 24:
-                    raise ValueError("completed months must be from 0 through 23")
-                completed_months, completed_years = value, None
-            else:
-                if value < 2:
-                    raise ValueError("completed years must be at least 2")
-                completed_months, completed_years = None, value
-
-            if claimed:
-                self._write_profile(
-                    conn,
-                    user_id,
-                    current,
-                    completed_months=completed_months,
-                    completed_years=completed_years,
-                )
-                conn.execute(
-                    "DELETE FROM applicability_input_sessions WHERE user_id = %s",
-                    (user_id,),
-                )
+            if (
+                current.completed_months == completed_months
+                and current.completed_years == completed_years
+            ):
+                return current
+            self._write_profile(
+                conn,
+                user_id,
+                current,
+                completed_months=completed_months,
+                completed_years=completed_years,
+            )
             return self._locked_profile(conn, user_id)
+
 
     def save_profile_fact(
         self,
@@ -293,6 +212,8 @@ class KIR174Store:
                 return current
             if current.revision != expected_revision:
                 raise StaleApplicabilityAction("applicability profile changed")
+            if getattr(current, field) == value:
+                return current
             self._write_profile(conn, user_id, current, **{field: value})
             return self._locked_profile(conn, user_id)
 
@@ -315,8 +236,12 @@ class KIR174Store:
                 raise StaleApplicabilityAction("applicability profile changed")
             changes: dict[str, object | None]
             if field == "age":
+                if current.completed_months is None and current.completed_years is None:
+                    return current
                 changes = {"completed_months": None, "completed_years": None}
             else:
+                if getattr(current, field) is None:
+                    return current
                 changes = {field: None}
             self._write_profile(conn, user_id, current, **changes)
             return self._locked_profile(conn, user_id)
@@ -348,6 +273,8 @@ class KIR174Store:
                 return self.iron_supervision(user_id, scope_key)
             if current_revision != expected_revision:
                 raise StaleApplicabilityAction("iron exposure context changed")
+            if row is not None and row["under_medical_supervision"] is value:
+                return self.iron_supervision(user_id, scope_key)
             if row is None:
                 conn.execute(
                     """
@@ -383,7 +310,7 @@ class KIR174Store:
             claimed = self._claim_action(conn, user_id, action_key, "iron_supervision_delete")
             row = conn.execute(
                 """
-                SELECT revision
+                SELECT under_medical_supervision, revision
                 FROM iron_exposure_applicability
                 WHERE user_id = %s AND scope_key = %s
                 FOR UPDATE
@@ -395,28 +322,20 @@ class KIR174Store:
                 return self.iron_supervision(user_id, scope_key)
             if current_revision != expected_revision:
                 raise StaleApplicabilityAction("iron exposure context changed")
-            if row is None:
-                conn.execute(
-                    """
-                    INSERT INTO iron_exposure_applicability (
-                        user_id, scope_key, under_medical_supervision, revision
-                    )
-                    VALUES (%s, %s, NULL, 1)
-                    """,
-                    (user_id, scope_key),
-                )
-            else:
-                conn.execute(
-                    """
-                    UPDATE iron_exposure_applicability
-                    SET under_medical_supervision = NULL,
-                        revision = revision + 1,
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE user_id = %s AND scope_key = %s
-                    """,
-                    (user_id, scope_key),
-                )
+            if row is None or row["under_medical_supervision"] is None:
+                return self.iron_supervision(user_id, scope_key)
+            conn.execute(
+                """
+                UPDATE iron_exposure_applicability
+                SET under_medical_supervision = NULL,
+                    revision = revision + 1,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = %s AND scope_key = %s
+                """,
+                (user_id, scope_key),
+            )
         return self.iron_supervision(user_id, scope_key)
+
 
     @staticmethod
     def _write_profile(
