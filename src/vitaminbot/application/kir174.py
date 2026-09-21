@@ -259,7 +259,7 @@ class KIR174Controller:
                     under_medical_supervision=bound.iron_exposure.under_medical_supervision,
                 )
             if self._all_candidates_blocked_by_non_user_gap(
-                substance_key, reference_type, exposure
+                substance_key, reference_type, bound.profile, exposure
             ):
                 continue
             lookup = lookup_reference(
@@ -472,9 +472,44 @@ class KIR174Controller:
         )
 
     @staticmethod
+    def _candidate_viable_under_known_population(
+        record: ReferenceRecord,
+        profile: PopulationProfile,
+    ) -> bool:
+        criteria = record.population
+        if profile.age_months is not None:
+            if criteria.age_min_months is not None and profile.age_months < criteria.age_min_months:
+                return False
+            if (
+                criteria.age_max_months_exclusive is not None
+                and profile.age_months >= criteria.age_max_months_exclusive
+            ):
+                return False
+        if (
+            profile.sex is not None
+            and criteria.sex is not SexApplicability.ALL
+            and profile.sex is not criteria.sex
+        ):
+            return False
+        if (
+            profile.life_stage is not None
+            and criteria.life_stage is not None
+            and profile.life_stage is not criteria.life_stage
+        ):
+            return False
+        if (
+            profile.physiological_condition is not None
+            and criteria.physiological_condition is not None
+            and profile.physiological_condition is not criteria.physiological_condition
+        ):
+            return False
+        return True
+
+    @staticmethod
     def _all_candidates_blocked_by_non_user_gap(
         substance_key: str,
         reference_type: ReferenceType,
+        profile: PopulationProfile,
         exposure: ExposureContext,
     ) -> bool:
         candidates = tuple(
@@ -484,6 +519,7 @@ class KIR174Controller:
             and record.jurisdiction is Jurisdiction.EU
             and record.substance_key == substance_key
             and record.reference_type is reference_type
+            and KIR174Controller._candidate_viable_under_known_population(record, profile)
         )
         if not candidates:
             return False
