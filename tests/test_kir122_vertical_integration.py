@@ -458,10 +458,7 @@ def test_operational_localization_preserves_short_shell_tokens_in_product_identi
         surface="plan",
     )
     assert projected_plan.text.startswith("План")
-    assert (
-        f"Ваша настройка: {adversarial_name}:".encode()
-        in projected_plan.text.encode()
-    )
+    assert f"Ваша настройка: {adversarial_name}:".encode() in projected_plan.text.encode()
     assert mutated_name.encode() not in projected_plan.text.encode()
     assert " — Утро" in projected_plan.text
     assert "Это ваши повторяющиеся настройки режима." in projected_plan.text
