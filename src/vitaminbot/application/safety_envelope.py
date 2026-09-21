@@ -39,6 +39,10 @@ class SafetyProvenance:
     source_url: str
     version: str
     source_locator: str
+    jurisdiction: str | None = None
+    reference_type: str | None = None
+    applicability_status: str | None = None
+    scope_note: str | None = None
 
     def __post_init__(self) -> None:
         for value in (
@@ -50,6 +54,14 @@ class SafetyProvenance:
         ):
             if not value.strip():
                 raise ValueError("safety provenance fields must not be blank")
+        for optional_value in (
+            self.jurisdiction,
+            self.reference_type,
+            self.applicability_status,
+            self.scope_note,
+        ):
+            if optional_value is not None and not optional_value.strip():
+                raise ValueError("optional safety provenance fields must not be blank")
 
 
 @dataclass(frozen=True, slots=True)
