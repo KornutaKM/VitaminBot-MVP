@@ -29,6 +29,7 @@ def test_packaged_migration_discovery_finds_initial_sql() -> None:
     assert "CREATE TABLE" in migrations[2].sql
     assert "CREATE TABLE" in migrations[3].sql
     assert "CREATE TABLE" in migrations[5].sql
+    assert "applicability_input_sessions" not in migrations[5].sql
 
 
 @pytest.fixture
