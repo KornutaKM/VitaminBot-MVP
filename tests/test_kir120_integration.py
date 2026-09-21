@@ -512,7 +512,7 @@ def test_runner_reminder_delivery_is_russian_first(
     rows = markup.inline_keyboard
     buttons = [button for row in rows for button in row]
     labels = [button.text for button in buttons]
-    assert any(label.startswith("Принято · ") for label in labels)
+    assert any(label.startswith("Принял(а) · ") for label in labels)
     assert "Позже" in labels
     assert "Пропустить" in labels
     assert any(label.startswith("Почему? · ") for label in labels)
