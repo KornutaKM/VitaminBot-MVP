@@ -232,15 +232,29 @@ class KIR122Controller:
                     "Они не превращены в ноль и не добавлены к полному итогу.",
                 ]
             )
-        return Screen(
-            text="\n".join(lines),
-            rows=(
-                (Button("Справочные значения и ограничения", "k122safe"),),
-                (Button("Почему так распределено?", "k122rules"),),
+        rows: list[tuple[Button, ...]] = [
+            (Button("Проверка", "k122safe"),),
+            (Button("Почему так распределено?", "k122rules"),),
+        ]
+        for aggregate in aggregates:
+            substance_key = self._substance_key_for_subject(aggregate.key.subject_id)
+            if substance_key is None:
+                continue
+            rows.append(
+                (
+                    Button(
+                        f"О веществе · {self._subject_name(aggregate.key.subject_id)}",
+                        f"k146c:{substance_key}",
+                    ),
+                )
+            )
+        rows.extend(
+            [
                 (Button("Сегодня", "k120today"), Button("План", "k120p")),
                 (Button("Состав", "k122comp"),),
-            ),
+            ]
         )
+        return Screen(text="\n".join(lines), rows=tuple(rows))
 
     def rules(self, telegram_user_id: int) -> Screen:
         user_id = self._base_store.ensure_user(telegram_user_id)
@@ -483,13 +497,21 @@ class KIR122Controller:
                 ]
                 manual_token = self._manual_token(supplement.instance_id)
                 if manual_token is not None:
-                    rows.append(
-                        (
-                            Button(
-                                "Настроить план",
-                                f"p:{manual_token}:{supplement.revision}",
+                    rows.extend(
+                        [
+                            (
+                                Button(
+                                    "Открыть добавку",
+                                    f"o:{manual_token}:{supplement.revision}",
+                                ),
                             ),
-                        )
+                            (
+                                Button(
+                                    "Настроить план",
+                                    f"p:{manual_token}:{supplement.revision}",
+                                ),
+                            ),
+                        ]
                     )
                 rows.extend(
                     [
@@ -564,6 +586,9 @@ class KIR122Controller:
                 rows=((Button("Итоги", "k122tot"),),),
             )
         token = self._token(record.instance_id)
+        manual_token = self._manual_token(record.instance_id)
+        if manual_token is None:
+            raise ValueError("unsupported supplement reference")
         rows = tuple(
             (Button(name, f"k122n:{token}:{record.revision}:{key}"),) for key, name, _ in options
         )
@@ -574,7 +599,15 @@ class KIR122Controller:
                 "Следующим сообщением вы подтвердите количество на порцию.\n\n"
                 "Выбор названия не означает, что добавка безопасна или подходит вам."
             ),
-            rows=rows + ((Button("Назад", "k122comp"),),),
+            rows=rows
+            + (
+                (
+                    Button(
+                        "Назад к добавке",
+                        f"o:{manual_token}:{record.revision}",
+                    ),
+                ),
+            ),
         )
 
     @staticmethod
@@ -976,6 +1009,10 @@ class KIR122Controller:
                         source_url=source.source_url,
                         version=source.version_label,
                         source_locator=record.source_locator,
+                        jurisdiction=record.jurisdiction.value,
+                        reference_type=record.reference_type.value,
+                        applicability_status=lookup.match.applicability.status.value,
+                        scope_note=record.provenance_note or None,
                     ),
                 )
                 comparison_context = SafetyComparisonContext(
@@ -1286,10 +1323,18 @@ class KIR122Controller:
         view = self._build_view(user_id)
         if self._short_revision(view.snapshot.context_revision) != expected_revision:
             return self._stale_screen()
-        sources: dict[str, tuple[str, str]] = {}
+        sources: dict[str, tuple[str, str, str, str, str, str, str]] = {}
         for result in view.rule_result.scheduling_results:
             for source in result.source_provenance:
-                sources[source.source_key] = (source.title, source.source_url)
+                sources[source.source_key] = (
+                    source.title,
+                    source.authority,
+                    source.jurisdiction_note,
+                    source.version_label,
+                    source.retrieved_on.isoformat(),
+                    source.locator,
+                    source.source_url,
+                )
         lines = [
             "Почему / источники правил",
             "",
@@ -1302,8 +1347,26 @@ class KIR122Controller:
                 "Это не подтверждение совместимости или безопасности."
             )
         else:
-            for title, url in sorted(sources.values()):
-                lines.extend([f"• {title}", f"  {url}"])
+            for (
+                title,
+                authority,
+                jurisdiction_note,
+                version,
+                retrieved_on,
+                locator,
+                url,
+            ) in sorted(sources.values()):
+                lines.extend(
+                    [
+                        f"• {title}",
+                        f"  автор/организация: {authority}",
+                        f"  область применимости источника: {jurisdiction_note}",
+                        f"  версия: {version}",
+                        f"  получен: {retrieved_on}",
+                        f"  раздел/идентификатор: {locator}",
+                        f"  {url}",
+                    ]
+                )
         return Screen(text="\n".join(lines), rows=((Button("Назад", "k122rules"),),))
 
     def _reference_sources(self, telegram_user_id: int, expected_revision: str) -> Screen:
@@ -1317,7 +1380,17 @@ class KIR122Controller:
             return self._stale_screen()
         envelopes = self._reference_envelopes(view, bound)
         sources = {
-            (source.title, source.source_url, source.version)
+            (
+                source.source_key,
+                source.title,
+                source.source_url,
+                source.version,
+                source.source_locator,
+                source.jurisdiction,
+                source.reference_type,
+                source.applicability_status,
+                source.scope_note,
+            )
             for envelope in envelopes
             for source in envelope.provenance
         }
@@ -1333,8 +1406,33 @@ class KIR122Controller:
                 "Значение не было угадано или подставлено."
             )
         else:
-            for title, url, version in sorted(sources):
-                lines.extend([f"• {title}", f"  версия: {version}", f"  {url}"])
+            for (
+                _source_key,
+                title,
+                url,
+                version,
+                source_locator,
+                jurisdiction,
+                reference_type,
+                applicability_status,
+                scope_note,
+            ) in sorted(sources, key=lambda item: (item[1], item[4], item[6] or "")):
+                lines.extend(
+                    [
+                        f"• {title}",
+                        f"  версия: {version}",
+                        f"  раздел источника: {source_locator}",
+                    ]
+                )
+                if jurisdiction is not None:
+                    lines.append(f"  юрисдикция: {jurisdiction}")
+                if reference_type is not None:
+                    lines.append(f"  тип справочного значения: {reference_type}")
+                if applicability_status == "match":
+                    lines.append("  применимость: запись совпала с текущим контекстом")
+                if scope_note is not None:
+                    lines.append(f"  область/ограничение: {scope_note}")
+                lines.append(f"  {url}")
         return Screen(text="\n".join(lines), rows=((Button("Назад", "k122safe"),),))
 
     def _record_from_token(
@@ -1343,10 +1441,14 @@ class KIR122Controller:
         token: str,
         expected_revision: int,
     ) -> SupplementRecord:
+        manual_instance_id = (
+            f"instance:manual:{token}" if re.fullmatch(r"[0-9a-f]{16}", token) else None
+        )
         matches = tuple(
             record
             for record in self._base_store.list_supplements(user_id)
             if self._token(record.instance_id) == token
+            or (manual_instance_id is not None and record.instance_id == manual_instance_id)
         )
         if len(matches) != 1:
             raise ValueError("stale supplement token")
@@ -1365,6 +1467,18 @@ class KIR122Controller:
             and record.subject_kind is SubjectKind.ANALYTE
         }
         return next(iter(ids)) if len(ids) == 1 else None
+
+    @staticmethod
+    def _substance_key_for_subject(subject_id: str) -> str | None:
+        keys = {
+            record.substance_key
+            for record in EU_EFSA_REFERENCE_DATASET.records
+            if record.lifecycle is ReferenceLifecycle.ACTIVE
+            and record.subject_id == subject_id
+            and record.subject_kind is SubjectKind.ANALYTE
+            and record.substance_key in _RU_SUBSTANCE_NAMES
+        }
+        return next(iter(keys)) if len(keys) == 1 else None
 
     @staticmethod
     def _subject_name(subject_id: str) -> str:
