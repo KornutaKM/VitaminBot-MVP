@@ -587,6 +587,151 @@ def test_shell_role_localization_preserves_confirmed_identity_byte_exact_across_
     assert profile.text.startswith("Профиль")
 
 
+@pytest.mark.parametrize(
+    "adversarial_name",
+    (
+        "Product facts and your plan are stored separately.",
+        "Formula | Product facts and your plan are stored separately. | Daily",
+    ),
+)
+def test_kir122_identity_roles_bypass_generic_phrase_localization_end_to_end(
+    vertical_stack: tuple[
+        KIR116Controller,
+        KIR120Controller,
+        KIR122Controller,
+        KIR116Store,
+    ],
+    adversarial_name: str,
+) -> None:
+    base, schedule, vertical, _store = vertical_stack
+    telegram_user_id = 122015
+    _create_clean_account(base, telegram_user_id)
+
+    supplements = base.supplements(telegram_user_id)
+    detail = base.callback(
+        telegram_user_id,
+        _callback_with_prefix(supplements, "o:"),
+        action_key=f"cb:kir122-identity:open:{adversarial_name}",
+    )
+    base.callback(
+        telegram_user_id,
+        _callback_with_prefix(detail, "en:"),
+        action_key=f"cb:kir122-identity:edit:{adversarial_name}",
+    )
+    renamed = base.text(
+        telegram_user_id,
+        adversarial_name,
+        action_key=f"msg:kir122-identity:rename:{adversarial_name}",
+    )
+
+    identity_bytes = adversarial_name.encode()
+    projected_detail = project_v02_screen(
+        vertical.decorate_operational_screen(renamed),
+        surface="supplement",
+    )
+    assert adversarial_name in projected_detail.text.splitlines()
+    assert identity_bytes in projected_detail.text.encode()
+    assert "Факты о продукте и ваш план хранятся отдельно." in projected_detail.text
+
+    composition = vertical.composition(telegram_user_id)
+    projected_composition = project_v02_screen(
+        vertical.decorate_operational_screen(composition),
+        surface="composition",
+    )
+    assert f"• {adversarial_name} —".encode() in projected_composition.text.encode()
+    assert _button(
+        projected_composition,
+        f"Состав: {adversarial_name[:28]}",
+    ).startswith("k122c:")
+
+    picker = vertical.callback(
+        telegram_user_id,
+        _callback_with_prefix(composition, "k122c:"),
+        action_key=f"cb:kir122-identity:picker:{adversarial_name}",
+    )
+    projected_picker = project_v02_screen(
+        vertical.decorate_operational_screen(picker),
+        surface="composition",
+    )
+    assert projected_picker.text.splitlines()[0].encode() == f"Состав — {adversarial_name}".encode()
+
+    amount_prompt = vertical.callback(
+        telegram_user_id,
+        _button(picker, "Магний"),
+        action_key=f"cb:kir122-identity:amount-prompt:{adversarial_name}",
+    )
+    projected_amount = project_v02_screen(
+        vertical.decorate_operational_screen(amount_prompt),
+        surface="composition",
+    )
+    assert projected_amount.text.splitlines()[0].encode() == f"Магний — {adversarial_name}".encode()
+
+    review = vertical.text(
+        telegram_user_id,
+        "100 mg",
+        action_key=f"msg:kir122-identity:amount:{adversarial_name}",
+    )
+    vertical.callback(
+        telegram_user_id,
+        _button(review, "Подтвердить"),
+        action_key=f"cb:kir122-identity:confirm:{adversarial_name}",
+    )
+
+    totals = vertical.totals(telegram_user_id)
+    projected_totals = project_v02_screen(
+        vertical.decorate_operational_screen(totals),
+        surface="totals",
+    )
+    assert f"  • {adversarial_name}: 75000 мкг".encode() in projected_totals.text.encode()
+
+    today = schedule.today(
+        telegram_user_id,
+        now=datetime(2026, 9, 20, 11, 0, tzinfo=UTC),
+    )
+    projected_today = project_v02_screen(
+        vertical.decorate_operational_screen(today),
+        surface="today",
+    )
+    assert f"• Утро — {adversarial_name}:".encode() in projected_today.text.encode()
+
+    plan = schedule.plan(telegram_user_id)
+    projected_plan = project_v02_screen(
+        vertical.decorate_operational_screen(plan),
+        surface="plan",
+    )
+    assert f"Ваша настройка: {adversarial_name}:".encode() in projected_plan.text.encode()
+
+    schedule.callback(
+        telegram_user_id,
+        _button(today, "Taken"),
+        action_key=f"cb:kir122-identity:taken:{adversarial_name}",
+        now=datetime(2026, 9, 20, 12, 0, tzinfo=UTC),
+    )
+    history = schedule.history(telegram_user_id)
+    projected_history = project_v02_screen(
+        vertical.decorate_operational_screen(history),
+        surface="history",
+    )
+    assert f"• {adversarial_name}:".encode() in projected_history.text.encode()
+
+    current_list = base.supplements(telegram_user_id)
+    current_detail = base.callback(
+        telegram_user_id,
+        _callback_with_prefix(current_list, "o:"),
+        action_key=f"cb:kir122-identity:reopen:{adversarial_name}",
+    )
+    remove_confirmation = base.callback(
+        telegram_user_id,
+        _callback_with_prefix(current_detail, "rp:"),
+        action_key=f"cb:kir122-identity:remove-preview:{adversarial_name}",
+    )
+    projected_remove = project_v02_screen(
+        vertical.decorate_operational_screen(remove_confirmation),
+        surface="supplement",
+    )
+    assert projected_remove.text.splitlines()[0].encode() == f"Удалить {adversarial_name}?".encode()
+
+
 def test_operational_localization_preserves_valid_dynamic_names_with_status_words(
     vertical_stack: tuple[
         KIR116Controller,
