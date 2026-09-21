@@ -837,28 +837,96 @@ def test_rules_matched_preference_preserves_dynamic_identity_byte_exact(
         action_key="cb:rules-identity:save-plan",
     )
 
-    composition = vertical.composition(telegram_user_id)
-    picker = vertical.callback(
+    add_second = base.callback(
         telegram_user_id,
-        _callback_with_prefix(composition, "k122c:"),
-        action_key="cb:rules-identity:composition",
+        "a",
+        action_key="cb:rules-identity:add-second",
     )
-    amount_prompt = vertical.callback(
+    second_manual = base.callback(
         telegram_user_id,
-        _button(picker, "Кальций"),
+        _button(add_second, "Enter manually"),
+        action_key="cb:rules-identity:second-manual",
+    )
+    second_units = base.text(
+        telegram_user_id,
+        "Rule Pair Iron",
+        action_key="msg:rules-identity:second-name",
+    )
+    second_serving = base.callback(
+        telegram_user_id,
+        _button(second_units, "Capsule"),
+        action_key="cb:rules-identity:second-unit",
+    )
+    second_review = base.text(
+        telegram_user_id,
+        "2",
+        action_key="msg:rules-identity:second-serving",
+    )
+    second_confirmed = base.callback(
+        telegram_user_id,
+        _button(second_review, "Confirm entry"),
+        action_key="cb:rules-identity:second-confirm",
+    )
+    base.callback(
+        telegram_user_id,
+        _button(second_confirmed, "Add / edit plan"),
+        action_key="cb:rules-identity:second-plan",
+    )
+    second_bucket = base.text(
+        telegram_user_id,
+        "1",
+        action_key="msg:rules-identity:second-plan-quantity",
+    )
+    base.callback(
+        telegram_user_id,
+        _button(second_bucket, "Morning"),
+        action_key="cb:rules-identity:second-save-plan",
+    )
+
+    composition = vertical.composition(telegram_user_id)
+    calcium_picker = vertical.callback(
+        telegram_user_id,
+        _button(composition, f"Состав: {adversarial_name[:28]}"),
+        action_key="cb:rules-identity:calcium-composition",
+    )
+    calcium_prompt = vertical.callback(
+        telegram_user_id,
+        _button(calcium_picker, "Кальций"),
         action_key="cb:rules-identity:calcium",
     )
-    assert f"Кальций — {adversarial_name}".encode() in amount_prompt.text.encode()
-
-    review = vertical.text(
+    assert f"Кальций — {adversarial_name}".encode() in calcium_prompt.text.encode()
+    calcium_review = vertical.text(
         telegram_user_id,
-        "1000 mg",
-        action_key="msg:rules-identity:amount",
+        "100 mg",
+        action_key="msg:rules-identity:calcium-amount",
     )
     vertical.callback(
         telegram_user_id,
-        _button(review, "Подтвердить"),
-        action_key="cb:rules-identity:confirm",
+        _button(calcium_review, "Подтвердить"),
+        action_key="cb:rules-identity:calcium-confirm",
+    )
+
+    composition = vertical.composition(telegram_user_id)
+    iron_picker = vertical.callback(
+        telegram_user_id,
+        _button(composition, "Состав: Rule Pair Iron"),
+        action_key="cb:rules-identity:iron-composition",
+    )
+    iron_prompt = vertical.callback(
+        telegram_user_id,
+        _button(iron_picker, "Железо"),
+        action_key="cb:rules-identity:iron",
+    )
+    assert "Железо — Rule Pair Iron" in iron_prompt.text
+    iron_review = vertical.text(
+        telegram_user_id,
+        "10 mg",
+        action_key="msg:rules-identity:iron-amount",
+    )
+    vertical.callback(
+        telegram_user_id,
+        _button(iron_review, "Подтвердить"),
+        action_key="cb:rules-identity:iron-confirm",
     )
 
     user_id = store.ensure_user(telegram_user_id)
@@ -873,11 +941,16 @@ def test_rules_matched_preference_preserves_dynamic_identity_byte_exact(
         surface="rules",
     )
 
-    assert f"• {adversarial_name}:".encode() in projected_rules.text.encode()
+    matched_line = next(
+        line
+        for line in projected_rules.text.splitlines()
+        if adversarial_name in line and "предпочтение — не размещать в одном приёме" in line
+    )
+    assert adversarial_name.encode() in matched_line.encode()
     assert (
-        "найдено доказательное предпочтение по распределению уже запланированных единиц. "
-        "Оно не создаёт новую дозу."
-    ) in projected_rules.text
+        "предпочтение — не размещать в одном приёме. "
+        "Точный интервал не установлен. Это не медицинская необходимость."
+    ) in matched_line
     assert "Важно: Это предпочтение, а не медицинская необходимость." in projected_rules.text
     assert "Важно: Правило не создаёт и не изменяет персональную дозу." in projected_rules.text
     assert "Отсутствие правила не означает, что сочетание безопасно." in projected_rules.text
