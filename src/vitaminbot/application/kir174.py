@@ -214,6 +214,7 @@ class KIR174Controller:
     def iron_scope_screen(self, telegram_user_id: int, scope_token: str) -> Screen:
         user_id = self._base_store.ensure_user(telegram_user_id)
         record = self._store.iron_supervision(user_id, f"iron:{scope_token}")
+        rows: list[tuple[Button, ...]] = []
         if record.under_medical_supervision is None:
             text = (
                 "Контекст текущего приёма железа\n\nСтатус медицинского наблюдения не подтверждён."
@@ -223,13 +224,12 @@ class KIR174Controller:
             text = (
                 f"Контекст текущего приёма железа\n\nПриём под медицинским наблюдением: {answer}."
             )
-        rows: list[tuple[Button, ...]] = [
-            (
-                Button("Да", f"k174med:{scope_token}:{record.revision}:yes"),
-                Button("Нет", f"k174med:{scope_token}:{record.revision}:no"),
-            ),
-        ]
-        if record.under_medical_supervision is not None:
+            rows.append(
+                (
+                    Button("Да", f"k174med:{scope_token}:{record.revision}:yes"),
+                    Button("Нет", f"k174med:{scope_token}:{record.revision}:no"),
+                )
+            )
             rows.append(
                 (
                     Button(
