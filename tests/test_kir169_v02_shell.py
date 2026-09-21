@@ -173,6 +173,48 @@ def test_supplement_open_label_uses_callback_role_not_dynamic_label_text() -> No
     assert _labels(projected)[0] == "Открыть Plan"
 
 
+def test_rules_all_status_rows_preserve_dynamic_identity_and_static_copy() -> None:
+    identity = "Formula | Product facts and your plan are stored separately. | Daily"
+    suffixes = (
+        "предпочтение — не размещать в одном приёме. "
+        "Точный интервал не установлен. Это не медицинская необходимость.",
+        "поддерживаемое правило не найдено. "
+        "Это не подтверждение совместимости или безопасности.",
+        "данных недостаточно. "
+        "План автоматически не усиливается и не дополняется догадкой.",
+        "состав одной единицы нельзя разнести по компонентам. "
+        "План не пытается разделить неделимую добавку.",
+        "более приоритетный подтверждённый контекст не позволяет "
+        "автоматически применить это предпочтение.",
+    )
+    raw = Screen(
+        text="\n".join(
+            [
+                "Планирование",
+                "",
+                *(f"• {identity}: {suffix}" for suffix in suffixes),
+                "  Важно: Отсутствие поддерживаемого правила не подтверждает "
+                "совместимость или безопасность.",
+                "",
+                "Отсутствие правила не означает, что сочетание безопасно.",
+            ]
+        ),
+        rows=((Button("Источники правил", "k122why:abc123"),),),
+    )
+
+    projected = project_v02_screen(raw, surface="rules")
+
+    for suffix in suffixes:
+        assert f"• {identity}: {suffix}".encode() in projected.text.encode()
+    assert (
+        "Важно: Отсутствие поддерживаемого правила не подтверждает "
+        "совместимость или безопасность."
+    ) in projected.text
+    assert "Отсутствие правила не означает, что сочетание безопасно." in projected.text
+    assert _callbacks(projected)[0] == "k122why:abc123"
+    assert _labels(projected)[0] == "Источники правила"
+
+
 def test_today_shell_preserves_occurrence_actions_and_has_no_taken_all() -> None:
     raw = Screen(
         text=(
