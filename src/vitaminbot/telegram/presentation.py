@@ -11,12 +11,12 @@ _LINE_REPLACEMENTS = {
     "Edit manual entry": "Редактирование записи",
     "Add to plan": "Добавить в план",
     "Choose a routine bucket": "Выберите часть дня",
-    "Profile": "Профиль",
     "My supplements": "Мои добавки",
-    "Today": "Сегодня",
-    "Plan": "План",
-    "History": "История",
     "Exact local time": "Точное местное время",
+    "Timezone updated.": "Часовой пояс обновлён.",
+    "Locale updated.": "Язык интерфейса обновлён.",
+    "Name updated.": "Название обновлено.",
+    "Serving updated.": "Порция обновлена.",
 }
 
 _PHRASE_REPLACEMENTS = (
@@ -235,6 +235,55 @@ _ROUTINE_BUCKET_LABELS = {
     "Evening": "Вечер",
 }
 
+_SURFACE_HEADINGS = {
+    "profile": ("Profile", "Профиль"),
+    "today": ("Today", "Сегодня"),
+    "plan": ("Plan", "План"),
+    "history": ("History", "История"),
+}
+
+_DYNAMIC_PREFIX_FIELDS = (
+    ("Serving — ", "Порция — "),
+    ("Current name: ", "Текущее название: "),
+)
+
+_DYNAMIC_IDENTITY_PREFIXES = (
+    "Serving — ",
+    "Current name: ",
+    "Edit name — ",
+    "Product unit — ",
+    "Review manual entry — ",
+    "Product name: ",
+    "Edit serving — ",
+)
+
+
+def _source_operational_surface(screen: Screen) -> str | None:
+    callbacks = [button.callback_data for row in screen.rows for button in row]
+    first = screen.text.splitlines()[0] if screen.text else ""
+
+    if any(data.startswith(("p:", "en:", "es:", "rp:", "rc:")) for data in callbacks):
+        return "supplement"
+    if first.startswith("My supplements —") or first.startswith("No supplements yet."):
+        return "supplements"
+    if any(data.startswith(("pt:", "pl:")) for data in callbacks):
+        return "profile"
+    if any(data.startswith(("k120b:", "k120e:")) for data in callbacks):
+        return "plan"
+    if any(data.startswith(("k120t:", "k120l:", "k120s:", "k120w:")) for data in callbacks):
+        return "today"
+    if any(data.startswith("k120c:") for data in callbacks):
+        return "history"
+    if first == "Profile":
+        return "profile"
+    if first == "Today":
+        return "today"
+    if first == "Plan":
+        return "plan"
+    if first == "History":
+        return "history"
+    return None
+
 
 def _supplement_structured_fields(lines: list[str]) -> dict[int, str]:
     for index in range(len(lines) - 2):
@@ -251,15 +300,67 @@ def _supplement_structured_fields(lines: list[str]) -> dict[int, str]:
     return {}
 
 
+def _supplement_name_index(lines: list[str], fields: dict[int, str]) -> int | None:
+    status_indices = [index for index, field in fields.items() if field == "status"]
+    if not status_indices:
+        return None
+    for index in range(status_indices[0] - 1, -1, -1):
+        if lines[index]:
+            return index
+    return None
+
+
+def _dynamic_identity_line_indices(
+    screen: Screen,
+    lines: list[str],
+    *,
+    surface: str | None,
+    supplement_fields: dict[int, str],
+) -> set[int]:
+    protected: set[int] = set()
+
+    supplement_name = _supplement_name_index(lines, supplement_fields)
+    if supplement_name is not None:
+        protected.add(supplement_name)
+
+    callbacks = [button.callback_data for row in screen.rows for button in row]
+    if surface == "supplement" and any(data.startswith("rc:") for data in callbacks):
+        first_non_empty = next((index for index, line in enumerate(lines) if line), None)
+        if first_non_empty is not None:
+            protected.add(first_non_empty)
+
+    if surface in {"today", "plan", "history"}:
+        protected.update(index for index, line in enumerate(lines) if line.startswith("• "))
+
+    if surface == "supplements":
+        protected.update(
+            index
+            for index, line in enumerate(lines)
+            if line.partition(". ")[0].isdigit() and ". " in line
+        )
+
+    if surface == "why" and lines and lines[0].startswith("Why this time? — "):
+        protected.add(0)
+
+    protected.update(
+        index
+        for index, line in enumerate(lines)
+        if line.startswith(_DYNAMIC_IDENTITY_PREFIXES)
+    )
+    return protected
+
+
 def _localize_structured_shell_line(
     line: str,
     *,
-    line_index: int,
-    profile_screen: bool,
+    surface: str | None,
     supplement_field: str | None,
-    today_screen: bool,
 ) -> str:
-    if profile_screen:
+    heading = _SURFACE_HEADINGS.get(surface or "")
+    if heading is not None and line == heading[0]:
+        return heading[1]
+
+    if surface == "profile":
         for source, target in _PROFILE_FIELD_PREFIXES.items():
             if line.startswith(source):
                 value = line[len(source) :]
@@ -281,11 +382,25 @@ def _localize_structured_shell_line(
                 return f"Ваш план: {target} — " + value[len(prefix) :]
         return "Ваш план: " + value
 
-    if today_screen:
+    if surface == "today":
         for source, target in _ROUTINE_BUCKET_LABELS.items():
             prefix = f"• {source} — "
             if line.startswith(prefix):
                 return f"• {target} — " + line[len(prefix) :]
+
+    if surface == "supplements":
+        if line.startswith("My supplements — "):
+            return "Мои добавки — " + line.removeprefix("My supplements — ")
+        number, separator, tail = line.partition(". ")
+        if separator and number.isdigit():
+            identity, state_separator, state = tail.rpartition(" — ")
+            if state_separator and state in {"plan set", "no plan yet"}:
+                rendered_state = "план настроен" if state == "plan set" else "план не настроен"
+                return f"{number}. {identity} — {rendered_state}"
+
+    for source, target in _DYNAMIC_PREFIX_FIELDS:
+        if line.startswith(source):
+            return target + line[len(source) :]
 
     return line
 
@@ -303,39 +418,45 @@ def _localize_structured_status_line(line: str) -> str:
     return line
 
 
-def localize_operational_screen(screen: Screen) -> Screen:
+def localize_operational_screen(
+    screen: Screen,
+    *,
+    surface: str | None = None,
+) -> Screen:
     """Translate only KIR-116/KIR-120 operational copy.
 
     Scientific KIR-146 card prose is intentionally not passed through this translator.
+    Dynamic product identity is protected by structural controller roles before generic copy
+    localization is applied.
     """
     lines = screen.text.splitlines()
-    profile_screen = "Profile" in lines
+    resolved_surface = surface or _source_operational_surface(screen)
     supplement_fields = _supplement_structured_fields(lines)
-    today_screen = "Today" in lines
-    translated_lines = [
-        _localize_structured_status_line(
-            _LINE_REPLACEMENTS.get(
-                localized_line := _localize_structured_shell_line(
-                    line,
-                    line_index=line_index,
-                    profile_screen=profile_screen,
-                    supplement_field=supplement_fields.get(line_index),
-                    today_screen=today_screen,
-                ),
-                localized_line,
-            )
+    protected = _dynamic_identity_line_indices(
+        screen,
+        lines,
+        surface=resolved_surface,
+        supplement_fields=supplement_fields,
+    )
+
+    translated_lines: list[str] = []
+    for line_index, line in enumerate(lines):
+        localized_line = _localize_structured_shell_line(
+            line,
+            surface=resolved_surface,
+            supplement_field=supplement_fields.get(line_index),
         )
-        for line_index, line in enumerate(lines)
-    ]
-    text = "\n".join(translated_lines)
-    for source, target in _PHRASE_REPLACEMENTS:
-        text = text.replace(source, target)
+        if line_index not in protected:
+            localized_line = _LINE_REPLACEMENTS.get(localized_line, localized_line)
+            for source, target in _PHRASE_REPLACEMENTS:
+                localized_line = localized_line.replace(source, target)
+        translated_lines.append(_localize_structured_status_line(localized_line))
 
     rows = tuple(
         tuple(Button(_button_label(button), button.callback_data) for button in row)
         for row in screen.rows
     )
-    return Screen(text=text, rows=rows)
+    return Screen(text="\n".join(translated_lines), rows=rows)
 
 
 def _button_label(button: Button) -> str:
@@ -400,7 +521,7 @@ def project_v02_screen(screen: Screen, *, surface: str | None = None) -> Screen:
     domain writes remain owned by the existing controllers and stores.
     """
 
-    projected = localize_operational_screen(screen)
+    projected = localize_operational_screen(screen, surface=surface)
     resolved_surface = surface or _infer_surface(projected)
 
     if resolved_surface == "start":
@@ -523,8 +644,6 @@ def _project_add(screen: Screen) -> Screen:
             "Данные применимости запрашиваются только тогда, когда они нужны конкретной "
             "принятой функции.",
         ),
-        ("Serving —", "Порция —"),
-        ("Current name:", "Текущее название:"),
         (
             "Send the supplement name you want recorded.",
             "Отправьте название, которое нужно сохранить.",
@@ -535,8 +654,15 @@ def _project_add(screen: Screen) -> Screen:
             "Сколько таких единиц составляет одну порцию по этикетке? Введите положительное число.",
         ),
     )
-    for source, target in replacements:
-        text = text.replace(source, target)
+    rendered_lines: list[str] = []
+    for line in text.splitlines():
+        rendered_line = line
+        for source, target in replacements:
+            if rendered_line == source:
+                rendered_line = target
+                break
+        rendered_lines.append(rendered_line)
+    text = "\n".join(rendered_lines)
     rows = tuple(
         tuple(Button(_button_label(button), button.callback_data) for button in row)
         for row in screen.rows
@@ -698,9 +824,7 @@ def _project_supplements(screen: Screen) -> Screen:
             "и при необходимости настроить план."
         )
     else:
-        text = text.replace("My supplements —", "Мои добавки —")
-        text = text.replace(" — plan set", " — план настроен")
-        text = text.replace(" — no plan yet", " — план не настроен")
+        text = screen.text
     rows = tuple(
         tuple(
             Button(
@@ -725,7 +849,6 @@ def _project_supplements(screen: Screen) -> Screen:
 
 
 def _project_supplement(screen: Screen) -> Screen:
-    screen = _project_residual(screen)
     rows = screen.rows
     callbacks = [button for row in rows for button in row]
     destructive = next(
@@ -790,16 +913,15 @@ def _project_supplement(screen: Screen) -> Screen:
 
 
 def _project_plan(screen: Screen) -> Screen:
-    text = (
-        screen.text.replace(" — Morning", " — Утро")
-        .replace(" — Day", " — День")
-        .replace(" — Evening", " — Вечер")
-    )
-    lines = text.splitlines()
     rendered: list[str] = []
-    for line in lines:
+    for line in screen.text.splitlines():
         if line.startswith("• "):
-            rendered.append("Ваша настройка: " + line[2:])
+            row, separator, schedule = line[2:].rpartition(" — ")
+            rendered_schedule = _ROUTINE_BUCKET_LABELS.get(schedule, schedule)
+            if separator:
+                rendered.append(f"Ваша настройка: {row} — {rendered_schedule}")
+            else:
+                rendered.append("Ваша настройка: " + line[2:])
         else:
             rendered.append(line)
     rows = _without_callbacks(
@@ -929,9 +1051,15 @@ def _project_residual(screen: Screen) -> Screen:
         ("Name updated.", "Название обновлено."),
         ("Serving updated.", "Порция обновлена."),
     )
-    for source, target in replacements:
-        text = text.replace(source, target)
-    return Screen(text=text, rows=screen.rows)
+    rendered_lines: list[str] = []
+    for line in text.splitlines():
+        rendered_line = line
+        for source, target in replacements:
+            if rendered_line == source:
+                rendered_line = target
+                break
+        rendered_lines.append(rendered_line)
+    return Screen(text="\n".join(rendered_lines), rows=screen.rows)
 
 
 def _without_callbacks(
