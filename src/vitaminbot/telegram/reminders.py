@@ -98,7 +98,7 @@ class TelegramReminderRunner:
 
 
 def _render_group(group: list[DeliveryClaim]) -> str:
-    heading = "Напоминание" if len(group) == 1 else "Напоминания на одно время"
+    heading = "Напоминание" if len(group) == 1 else f"Напоминания на одно время · {len(group)}"
     lines = [heading, ""]
     for claim in group:
         lines.append(
@@ -122,7 +122,7 @@ def _render_keyboard(group: list[DeliveryClaim]) -> InlineKeyboardMarkup:
     for claim in group:
         action_row = [
             InlineKeyboardButton(
-                f"Принято · {claim.name[:18]}",
+                f"Принял(а) · {claim.name[:18]}",
                 callback_data=f"k120t:{claim.occurrence_id}:{claim.occurrence_revision}",
             )
         ]
