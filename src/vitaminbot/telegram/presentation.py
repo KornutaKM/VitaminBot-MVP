@@ -339,6 +339,22 @@ def _dynamic_identity_line_indices(
             if line.partition(". ")[0].isdigit() and ". " in line
         )
 
+    if surface == "composition":
+        if any(data.startswith("k122c:") for data in callbacks):
+            protected.update(index for index, line in enumerate(lines) if line.startswith("• "))
+        if lines and lines[0].startswith("Состав — "):
+            protected.add(0)
+        if (
+            lines
+            and "k122cancel" in callbacks
+            and not any(data.startswith("k122ok:") for data in callbacks)
+            and " — " in lines[0]
+        ):
+            protected.add(0)
+
+    if surface == "totals":
+        protected.update(index for index, line in enumerate(lines) if line.startswith("  • "))
+
     if surface == "why" and lines and lines[0].startswith("Why this time? — "):
         protected.add(0)
 
