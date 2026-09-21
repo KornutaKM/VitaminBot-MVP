@@ -343,9 +343,7 @@ def _dynamic_identity_line_indices(
         protected.add(0)
 
     protected.update(
-        index
-        for index, line in enumerate(lines)
-        if line.startswith(_DYNAMIC_IDENTITY_PREFIXES)
+        index for index, line in enumerate(lines) if line.startswith(_DYNAMIC_IDENTITY_PREFIXES)
     )
     return protected
 
