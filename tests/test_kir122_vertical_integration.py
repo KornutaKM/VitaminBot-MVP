@@ -435,9 +435,9 @@ def test_operational_localization_preserves_short_shell_tokens_in_product_identi
         vertical.decorate_operational_screen(renamed),
         surface="supplement",
     )
-    identity_bytes = adversarial_name.encode("utf-8")
-    assert identity_bytes in projected_detail.text.encode("utf-8")
-    assert mutated_name.encode("utf-8") not in projected_detail.text.encode("utf-8")
+    identity_bytes = adversarial_name.encode()
+    assert identity_bytes in projected_detail.text.encode()
+    assert mutated_name.encode() not in projected_detail.text.encode()
     assert "Ваш план: Утро —" in projected_detail.text
 
     today = schedule.today(
@@ -448,8 +448,8 @@ def test_operational_localization_preserves_short_shell_tokens_in_product_identi
         vertical.decorate_operational_screen(today),
         surface="today",
     )
-    assert f"• Утро — {adversarial_name}:".encode("utf-8") in projected_today.text.encode("utf-8")
-    assert mutated_name.encode("utf-8") not in projected_today.text.encode("utf-8")
+    assert f"• Утро — {adversarial_name}:".encode() in projected_today.text.encode()
+    assert mutated_name.encode() not in projected_today.text.encode()
     assert "[ожидает]" in projected_today.text
 
     plan = schedule.plan(telegram_user_id)
@@ -459,10 +459,10 @@ def test_operational_localization_preserves_short_shell_tokens_in_product_identi
     )
     assert projected_plan.text.startswith("План")
     assert (
-        f"Ваша настройка: {adversarial_name}:".encode("utf-8")
-        in projected_plan.text.encode("utf-8")
+        f"Ваша настройка: {adversarial_name}:".encode()
+        in projected_plan.text.encode()
     )
-    assert mutated_name.encode("utf-8") not in projected_plan.text.encode("utf-8")
+    assert mutated_name.encode() not in projected_plan.text.encode()
     assert " — Утро" in projected_plan.text
     assert "Это ваши повторяющиеся настройки режима." in projected_plan.text
 
@@ -478,8 +478,8 @@ def test_operational_localization_preserves_short_shell_tokens_in_product_identi
         surface="history",
     )
     assert projected_history.text.startswith("История")
-    assert f"• {adversarial_name}:".encode("utf-8") in projected_history.text.encode("utf-8")
-    assert mutated_name.encode("utf-8") not in projected_history.text.encode("utf-8")
+    assert f"• {adversarial_name}:".encode() in projected_history.text.encode()
+    assert mutated_name.encode() not in projected_history.text.encode()
     assert " — принято" in projected_history.text
 
 
