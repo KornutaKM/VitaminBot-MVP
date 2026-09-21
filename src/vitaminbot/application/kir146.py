@@ -1048,6 +1048,7 @@ class NutrientCardRenderer:
 
 
 ContextProvider = Callable[[int, str], CardContext]
+JITPromptProvider = Callable[[int, CardRender], Screen | None]
 
 
 class KIR146Controller:
@@ -1058,9 +1059,11 @@ class KIR146Controller:
         renderer: NutrientCardRenderer,
         *,
         context_provider: ContextProvider | None = None,
+        jit_prompt_provider: JITPromptProvider | None = None,
     ) -> None:
         self._renderer = renderer
         self._context_provider = context_provider or self._default_context
+        self._jit_prompt_provider = jit_prompt_provider
 
     def list_cards(self) -> Screen:
         active = sorted(
@@ -1098,7 +1101,9 @@ class KIR146Controller:
                 ),
                 rows=((Button("Available cards", "k146list"),),),
             )
-        return self._current_render(telegram_user_id, key).screen
+        render = self._current_render(telegram_user_id, key)
+        prompt = self._jit_prompt(telegram_user_id, render)
+        return render.screen if prompt is None else prompt
 
     def callback(self, telegram_user_id: int, data: str) -> Screen:
         if data == "k146list":
@@ -1120,7 +1125,8 @@ class KIR146Controller:
             )
         render = self._current_render(telegram_user_id, key)
         if action == "k146c":
-            return render.screen
+            prompt = self._jit_prompt(telegram_user_id, render)
+            return render.screen if prompt is None else prompt
         if action == "k146r":
             return self._renderer.reference_values_screen(render)
         if action == "k146s":
@@ -1133,6 +1139,11 @@ class KIR146Controller:
     def _current_render(self, telegram_user_id: int, key: str) -> CardRender:
         context = self._context_provider(telegram_user_id, key)
         return self._renderer.render_current(key, context)
+
+    def _jit_prompt(self, telegram_user_id: int, render: CardRender) -> Screen | None:
+        if self._jit_prompt_provider is None:
+            return None
+        return self._jit_prompt_provider(telegram_user_id, render)
 
     @staticmethod
     def _default_context(telegram_user_id: int, _key: str) -> CardContext:
