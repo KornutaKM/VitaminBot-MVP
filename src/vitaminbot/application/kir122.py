@@ -24,6 +24,12 @@ from vitaminbot.application.views.composition import (
     CompositionSupplementView,
     CompositionView,
 )
+from vitaminbot.application.views.safety import (
+    SafetySourceItem,
+    SafetySourcesStatus,
+    SafetySourcesView,
+    SafetyView,
+)
 from vitaminbot.application.views.totals import (
     NutrientContributorView,
     NutrientTotalsView,
@@ -577,6 +583,103 @@ class KIR122Controller:
                 (Button("Источники правил", f"k122why:{short_revision}"),),
                 (Button("Сегодня", "k120today"), Button("План", "k120p")),
                 (Button("Итоги", "k122tot"),),
+            ),
+        )
+
+    def safety_prompt(self, telegram_user_id: int) -> Screen | None:
+        """Return the existing fail-closed JIT applicability prompt, if one is required."""
+        if self._applicability_controller is None:
+            return None
+        user_id = self._base_store.ensure_user(telegram_user_id)
+        view = self._build_view(user_id)
+        return self._applicability_controller.prompt_for_pairs(
+            telegram_user_id,
+            pairs=self._reference_pairs(view),
+            base_revision=view.snapshot.context_revision,
+        )
+
+    def safety_view(self, telegram_user_id: int) -> SafetyView:
+        """Project governed safety envelopes after the applicability gate has passed."""
+        user_id = self._base_store.ensure_user(telegram_user_id)
+        view = self._build_view(user_id)
+        bound = self._bound_applicability(telegram_user_id, view.snapshot.context_revision)
+        context_revision = (
+            view.snapshot.context_revision if bound is None else bound.context_revision
+        )
+        envelopes = self._reference_envelopes(view, bound) + (
+            self._scope_envelope(view, context_revision=context_revision),
+        )
+        iron_scope_token: str | None = None
+        if bound is not None and any(
+            substance_key == "iron" for substance_key, _ in self._reference_pairs(view)
+        ):
+            iron_scope_token = bound.iron_scope_key.removeprefix("iron:")
+        return SafetyView(
+            envelopes=envelopes,
+            context_revision=context_revision,
+            show_applicability_profile=self._applicability_controller is not None,
+            iron_scope_token=iron_scope_token,
+        )
+
+    def safety_sources_view(
+        self,
+        telegram_user_id: int,
+        expected_revision: str,
+    ) -> SafetySourcesView:
+        user_id = self._base_store.ensure_user(telegram_user_id)
+        view = self._build_view(user_id)
+        bound = self._bound_applicability(telegram_user_id, view.snapshot.context_revision)
+        context_revision = (
+            view.snapshot.context_revision if bound is None else bound.context_revision
+        )
+        if self._short_revision(context_revision) != expected_revision:
+            return SafetySourcesView(
+                status=SafetySourcesStatus.STALE,
+                dataset_version=DATASET_VERSION,
+            )
+
+        envelopes = self._reference_envelopes(view, bound)
+        sources = {
+            (
+                source.source_key,
+                source.title,
+                source.source_url,
+                source.version,
+                source.source_locator,
+                source.jurisdiction,
+                source.reference_type,
+                source.applicability_status,
+                source.scope_note,
+            )
+            for envelope in envelopes
+            for source in envelope.provenance
+        }
+        return SafetySourcesView(
+            status=SafetySourcesStatus.READY,
+            dataset_version=DATASET_VERSION,
+            sources=tuple(
+                SafetySourceItem(
+                    source_key=source_key,
+                    title=title,
+                    source_url=url,
+                    version=version,
+                    source_locator=locator,
+                    jurisdiction=jurisdiction,
+                    reference_type=reference_type,
+                    applicability_status=applicability_status,
+                    scope_note=scope_note,
+                )
+                for (
+                    source_key,
+                    title,
+                    url,
+                    version,
+                    locator,
+                    jurisdiction,
+                    reference_type,
+                    applicability_status,
+                    scope_note,
+                ) in sorted(sources, key=lambda item: (item[1], item[4], item[6] or ""))
             ),
         )
 
