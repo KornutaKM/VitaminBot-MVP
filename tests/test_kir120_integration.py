@@ -1185,9 +1185,7 @@ def test_structured_history_correction_is_two_step_idempotent_and_auditable(
     assert preview.preview.name == occurrence.name
     assert preview.preview.state == "taken"
 
-    confirm_callback = (
-        f"k120c:{preview.preview.occurrence_id}:{preview.preview.expected_revision}"
-    )
+    confirm_callback = f"k120c:{preview.preview.occurrence_id}:{preview.preview.expected_revision}"
     applied = controller.apply_history_action_view(
         telegram_user_id,
         confirm_callback,
