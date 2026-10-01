@@ -74,6 +74,9 @@ jobs:
       - name: Pytest
         run: pytest
 
+      - name: Docker build
+        run: docker build --tag vitaminbot-ci .
+
       - name: V03 release journeys
         run: >-
           pytest -q
