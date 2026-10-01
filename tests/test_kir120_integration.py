@@ -13,8 +13,8 @@ from psycopg import sql
 from telegram import InlineKeyboardMarkup
 
 import vitaminbot.telegram.reminders as reminder_module
-from vitaminbot.application.kir116 import KIR116Controller, Screen
 from vitaminbot.application.intake import TodayActionStatus, TodayOccurrenceState
+from vitaminbot.application.kir116 import KIR116Controller, Screen
 from vitaminbot.application.kir120 import KIR120Controller
 from vitaminbot.persistence import migrate
 from vitaminbot.persistence.kir116 import KIR116Store, SupplementRecord
