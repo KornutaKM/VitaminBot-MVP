@@ -3,6 +3,7 @@ from vitaminbot.application.intake import IntakeController
 from vitaminbot.application.kir116 import KIR116Controller
 from vitaminbot.application.kir120 import KIR120Controller
 from vitaminbot.application.kir122 import KIR122Controller
+from vitaminbot.application.kir146 import KIR146Controller
 from vitaminbot.application.kir174 import KIR174Controller
 from vitaminbot.application.nutrition import NutrientReferenceController, NutritionController
 from vitaminbot.application.supplements import SupplementController
