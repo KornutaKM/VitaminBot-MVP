@@ -84,6 +84,14 @@ jobs:
       - name: Docker build
         run: docker build --tag vitaminbot-ci .
 
+      - name: Docker migration smoke
+        env:
+          POSTGRES_PASSWORD: vitaminbot-ci
+          TELEGRAM_BOT_TOKEN: 123456:ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890
+        run: |
+          docker compose up --build --abort-on-container-exit --exit-code-from migrate migrate
+          docker compose down -v --remove-orphans
+
       - name: V03 release journeys
         run: >-
           pytest -q

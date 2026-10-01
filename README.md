@@ -50,7 +50,15 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Compose starts PostgreSQL, applies migrations once, then starts the Telegram update process and the reminder worker as separate containers.
+Compose starts PostgreSQL on the internal Docker network only, applies migrations once, then starts the Telegram update process and the reminder worker as separate containers. A host PostgreSQL installation and a free host port 5432 are not required.
+
+If you explicitly need to connect to PostgreSQL from the host, use the optional override:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.host-db.yml up -d postgres
+```
+
+That override publishes `POSTGRES_PORT` (5432 by default) and can be changed in `.env`.
 
 Useful commands:
 
