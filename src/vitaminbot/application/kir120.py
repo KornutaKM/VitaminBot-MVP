@@ -5,6 +5,7 @@ from datetime import UTC, datetime, time, timedelta
 from decimal import Decimal
 
 from vitaminbot.application.kir116 import Button, Screen
+from vitaminbot.application.views.today import TodayStatus, TodayView, build_today_view
 from vitaminbot.persistence.kir120 import (
     AmbiguousLocalTime,
     InvalidOccurrenceState,
@@ -86,6 +87,25 @@ class KIR120Controller:
                 rows=((Button("Open Plan", "k120p"),),),
             )
         return self._today_screen(occurrences)
+
+    def today_view(
+        self,
+        telegram_user_id: int,
+        *,
+        now: datetime | None = None,
+    ) -> TodayView:
+        """Return a structured Today projection without Telegram presentation copy."""
+        user_id = self._store.ensure_user(telegram_user_id)
+        current = _utc_now(now)
+        try:
+            occurrences = self._store.today(user_id, current)
+        except MissingTimezone:
+            return TodayView(status=TodayStatus.MISSING_TIMEZONE)
+        except (AmbiguousLocalTime, NonexistentLocalTime):
+            return TodayView(status=TodayStatus.AMBIGUOUS_LOCAL_TIME)
+        except InvalidScheduleTime:
+            return TodayView(status=TodayStatus.INVALID_SCHEDULE)
+        return build_today_view(occurrences)
 
     def plan(self, telegram_user_id: int, *, prefix: str = "") -> Screen:
         user_id = self._store.ensure_user(telegram_user_id)

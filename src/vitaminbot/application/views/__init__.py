@@ -1,6 +1,5 @@
-"""Intake planning, Today, and history application boundary."""
+"""Structured application-layer view models."""
 
-from vitaminbot.application.kir120 import KIR120Controller
 from vitaminbot.application.views.today import (
     TodayOccurrenceState,
     TodayOccurrenceView,
@@ -9,10 +8,7 @@ from vitaminbot.application.views.today import (
     build_today_view,
 )
 
-IntakeController = KIR120Controller
-
 __all__ = [
-    "IntakeController",
     "TodayOccurrenceState",
     "TodayOccurrenceView",
     "TodayStatus",
