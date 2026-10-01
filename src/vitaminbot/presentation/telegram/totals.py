@@ -56,8 +56,7 @@ def render_regimen_totals(view: RegimenTotalsView) -> Screen:
         lines.append("")
         if nutrient.is_complete and nutrient.total is not None and nutrient.unit is not None:
             lines.append(
-                f"{nutrient.name} · {_decimal(nutrient.total)} "
-                f"{_unit_label(nutrient.unit)}/день"
+                f"{nutrient.name} · {_decimal(nutrient.total)} {_unit_label(nutrient.unit)}/день"
             )
         else:
             lines.append(f"{nutrient.name} · итог неполный")
