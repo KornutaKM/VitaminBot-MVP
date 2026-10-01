@@ -6,6 +6,15 @@ from vitaminbot.application.views.adherence import (
     AdherenceView,
     AdherenceWindowView,
 )
+from vitaminbot.application.views.plan import (
+    PlanActionResult,
+    PlanActionStatus,
+    PlanItemView,
+    PlanStatus,
+    PlanTimeEditView,
+    PlanTimeInputError,
+    PlanView,
+)
 from vitaminbot.application.views.today import (
     TodayActionResult,
     TodayActionStatus,
