@@ -636,10 +636,7 @@ class KIR122Controller:
     def has_pending_text(self, telegram_user_id: int) -> bool:
         user_id = self._base_store.ensure_user(telegram_user_id)
         base_session = self._base_store.get_session(user_id)
-        if (
-            base_session is not None
-            and base_session.state == "composition_serving_quantity"
-        ):
+        if base_session is not None and base_session.state == "composition_serving_quantity":
             return True
         session = self._store.session(user_id)
         return session is not None and session.state == "amount_input"
