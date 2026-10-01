@@ -531,6 +531,15 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         screen = render_supplement_detail(supplement_view)
         structured_supplement = True
+    elif query.data.startswith(("ps:", "rs:")):
+        supplement_view = await asyncio.to_thread(
+            _controller(context).supplement_lifecycle_callback_view,
+            telegram_user_id,
+            query.data,
+            action_key=action_key,
+        )
+        screen = render_supplement_detail(supplement_view)
+        structured_supplement = True
     elif query.data.startswith("k174") and applicability_controller is not None:
         applicability_action = True
         screen = await asyncio.to_thread(

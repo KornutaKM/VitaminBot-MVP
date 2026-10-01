@@ -40,6 +40,8 @@ def test_quick_record_detail_does_not_invent_label_serving() -> None:
     assert "es:0123456789abcdef:3" in callbacks
     assert "rp:0123456789abcdef:3" in callbacks
     assert "k122comp" in callbacks
+    assert "ps:0123456789abcdef:3" in callbacks
+    assert "rs:0123456789abcdef:3" not in callbacks
     assert "ls" in callbacks
 
 
@@ -73,3 +75,26 @@ def test_supplement_detail_stale_and_missing_fail_closed() -> None:
     )
     assert "Добавка больше не найдена." in missing.text
     assert [button.callback_data for row in missing.rows for button in row] == ["ls"]
+
+
+def test_paused_supplement_detail_offers_resume() -> None:
+    view = SupplementDetailView(
+        status=SupplementDetailStatus.READY,
+        instance_id="instance:manual:0123456789abcdef",
+        revision=8,
+        name="Magnesium Citrate",
+        unit_label="capsule",
+        serving_basis_type="per_consumption_unit",
+        units_per_serving=Decimal("1"),
+        plan_quantity=Decimal("2"),
+        plan_bucket="evening",
+        plan_unit_label="capsule",
+        lifecycle_status="paused",
+    )
+
+    screen = render_supplement_detail(view)
+
+    assert "Статус\nНа паузе" in screen.text
+    callbacks = [button.callback_data for row in screen.rows for button in row]
+    assert "rs:0123456789abcdef:8" in callbacks
+    assert "ps:0123456789abcdef:8" not in callbacks

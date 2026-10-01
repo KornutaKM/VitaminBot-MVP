@@ -245,6 +245,7 @@ class KIR120Store:
                   ON unit.formulation_id = event.formulation_id
                  AND unit.unit_id = event.consumption_unit_id
                 WHERE us.user_id = %s
+                  AND us.lifecycle_status = 'active'
                 ORDER BY us.created_at, us.instance_id, event.event_id
                 """,
                 (user_id,),
@@ -447,6 +448,13 @@ class KIR120Store:
                     WHERE plan.plan_id = %s
                       AND plan.version = %s
                       AND event.event_id = %s
+                      AND EXISTS (
+                          SELECT 1
+                          FROM user_supplements AS current_supplement
+                          WHERE current_supplement.instance_id = plan.tracked_instance_id
+                            AND current_supplement.user_id = %s
+                            AND current_supplement.lifecycle_status = 'active'
+                      )
                     ON CONFLICT (tracked_instance_id, local_date) DO NOTHING
                     """,
                     (
@@ -460,6 +468,7 @@ class KIR120Store:
                         template.plan_id,
                         template.plan_version,
                         template.event_id,
+                        user_id,
                     ),
                 )
         return self.occurrences_for_date(user_id, local_date)
@@ -476,6 +485,7 @@ class KIR120Store:
                 JOIN intake_plan_heads AS head
                   ON head.tracked_instance_id = us.instance_id
                 WHERE profile.timezone IS NOT NULL
+                  AND us.lifecycle_status = 'active'
                 ORDER BY profile.user_id
                 """
             ).fetchall()
@@ -786,6 +796,8 @@ class KIR120Store:
                   ON unit.formulation_id = occurrence.formulation_id
                  AND unit.unit_id = occurrence.consumption_unit_id
                 WHERE occurrence.state = 'pending'
+                  AND occurrence.cancelled_at IS NULL
+                  AND us.lifecycle_status = 'active'
                   AND occurrence.due_at <= %s
                   AND users.telegram_user_id IS NOT NULL
                   AND NOT EXISTS (
@@ -878,6 +890,8 @@ class KIR120Store:
                     occurrence.schedule_label,
                     occurrence.due_at,
                     occurrence.later_count,
+                    occurrence.cancelled_at,
+                    us.lifecycle_status,
                     delivery.lease_expires_at,
                     delivery.occurrence_revision
                 FROM reminder_delivery_attempts AS delivery
@@ -903,6 +917,8 @@ class KIR120Store:
                 row["lease_expires_at"] <= now
                 or int(row["occurrence_revision"]) != int(row["revision"])
                 or row["telegram_user_id"] is None
+                or row["cancelled_at"] is not None
+                or row["lifecycle_status"] != "active"
             ):
                 conn.execute(
                     """
@@ -1355,6 +1371,7 @@ class KIR120Store:
              AND unit.unit_id = event.consumption_unit_id
             WHERE us.user_id = %s
               AND us.instance_id = %s
+              AND us.lifecycle_status = 'active'
             ORDER BY event.event_id
             LIMIT 1
             FOR UPDATE OF head
@@ -1460,6 +1477,7 @@ class KIR120Store:
               ON unit.formulation_id = occurrence.formulation_id
              AND unit.unit_id = occurrence.consumption_unit_id
             WHERE occurrence.user_id = %s
+              AND occurrence.cancelled_at IS NULL
         """
 
 

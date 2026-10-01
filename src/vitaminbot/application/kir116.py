@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -133,6 +134,51 @@ class KIR116Controller:
         if record.revision != expected_revision:
             return SupplementDetailView(status=SupplementDetailStatus.STALE)
 
+        return self._supplement_detail_from_record(record)
+
+    def supplement_lifecycle_callback_view(
+        self,
+        telegram_user_id: int,
+        data: str,
+        *,
+        action_key: str,
+        now: datetime | None = None,
+    ) -> SupplementDetailView:
+        parts = data.split(":")
+        if len(parts) != 3 or parts[0] not in {"ps", "rs"}:
+            return SupplementDetailView(status=SupplementDetailStatus.NOT_FOUND)
+
+        user_id = self._store.ensure_user(telegram_user_id)
+        try:
+            expected_revision = int(parts[2])
+            instance_id = self._instance_id(parts[1])
+            if parts[0] == "ps":
+                current = now or datetime.now(UTC)
+                if current.tzinfo is None:
+                    raise ValueError("now must be timezone-aware")
+                record = self._store.pause_supplement(
+                    user_id,
+                    action_key,
+                    instance_id,
+                    expected_revision,
+                    current.astimezone(UTC),
+                )
+            else:
+                record = self._store.resume_supplement(
+                    user_id,
+                    action_key,
+                    instance_id,
+                    expected_revision,
+                )
+        except ValueError:
+            return SupplementDetailView(status=SupplementDetailStatus.NOT_FOUND)
+        except (InvalidTransition, StaleAction, RecordNotFound):
+            return SupplementDetailView(status=SupplementDetailStatus.STALE)
+
+        return self._supplement_detail_from_record(record)
+
+    @staticmethod
+    def _supplement_detail_from_record(record: SupplementRecord) -> SupplementDetailView:
         return SupplementDetailView(
             status=SupplementDetailStatus.READY,
             instance_id=record.instance_id,
@@ -144,6 +190,7 @@ class KIR116Controller:
             plan_quantity=record.plan_quantity,
             plan_bucket=record.plan_bucket,
             plan_unit_label=record.plan_unit_label,
+            lifecycle_status=record.lifecycle_status,
         )
 
     def quick_add_pending(self, telegram_user_id: int) -> bool:
