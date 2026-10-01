@@ -1,5 +1,10 @@
 """Structured application-layer view models."""
 
+from vitaminbot.application.views.account import (
+    AccountDeletionStatus,
+    AccountDeletionView,
+    AccountExport,
+)
 from vitaminbot.application.views.add import QuickAddStep, QuickAddView
 from vitaminbot.application.views.adherence import (
     AdherenceStatus,
@@ -22,6 +27,9 @@ from vitaminbot.application.views.today import (
 )
 
 __all__ = [
+    "AccountDeletionStatus",
+    "AccountDeletionView",
+    "AccountExport",
     "AdherenceStatus",
     "AdherenceView",
     "AdherenceWindowView",
