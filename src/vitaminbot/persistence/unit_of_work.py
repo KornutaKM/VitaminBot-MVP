@@ -47,9 +47,7 @@ class PostgresUnitOfWork:
             row_factory=dict_row,
         )
         connection.isolation_level = IsolationLevel.REPEATABLE_READ
-        connection.execute(
-            sql.SQL("SET search_path TO {}").format(sql.Identifier(self._schema))
-        )
+        connection.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(self._schema)))
 
         self._connection = connection
         self._committed = False
