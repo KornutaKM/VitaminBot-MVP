@@ -15,6 +15,7 @@ an automated regression test.
 | Supplement lifecycle | Pause cancels pending reminders; resume starts from the next valid schedule | `tests/test_kir120_integration.py`, `tests/test_v03_supplement_detail.py` |
 | Inventory | Manual balance is nonnegative; Taken/correction ledger is deterministic | `tests/test_v03_inventory.py`, `tests/test_kir120_integration.py` |
 | Adherence | 7/30-day summaries report planned/taken/skipped/unresolved without health judgment | `tests/test_v03_adherence.py` |
+| Regimen totals | Only confirmed composition × current plan contributes; incomplete aggregates withhold the full numeric total and keep unknown ≠ zero | `tests/test_v03_totals.py`, `tests/test_kir122_vertical_integration.py` |
 | Stale actions | Revision-bound callbacks fail closed and do not write duplicate intake | `tests/test_kir120_integration.py`, `tests/test_v03_today_renderer.py` |
 | Account control | Export is versioned; deletion is explicit, nonce-bound, cascading, and old tokens cannot delete recreated accounts | `tests/test_v03_account_data.py` |
 | Safety regression | Numeric safety behavior remains deterministic and independent from LLM output | `tests/test_safety_regression_kir121.py` |
