@@ -103,9 +103,7 @@ def test_empty_regimen_totals_states_preserve_unknown_as_unknown() -> None:
         RegimenTotalsView(status=RegimenTotalsStatus.NO_SUPPLEMENTS)
     )
     assert "Добавок пока нет." in no_supplements.text
-    assert _callbacks(
-        RegimenTotalsView(status=RegimenTotalsStatus.NO_SUPPLEMENTS)
-    ) == ["a"]
+    assert _callbacks(RegimenTotalsView(status=RegimenTotalsStatus.NO_SUPPLEMENTS)) == ["a"]
 
     no_aggregates_view = RegimenTotalsView(
         status=RegimenTotalsStatus.NO_AGGREGATES,
