@@ -17,11 +17,14 @@ from telegram.ext import (
     filters,
 )
 
-from vitaminbot.application.kir116 import Button, KIR116Controller, Screen
-from vitaminbot.application.kir120 import KIR120Controller
-from vitaminbot.application.kir122 import KIR122Controller
-from vitaminbot.application.kir146 import KIR146Controller, NutrientCardRenderer
-from vitaminbot.application.kir174 import KIR174Controller
+from vitaminbot.application.applicability import ApplicabilityController
+from vitaminbot.application.intake import IntakeController
+from vitaminbot.application.nutrition import (
+    NutrientCardRenderer,
+    NutrientReferenceController,
+    NutritionController,
+)
+from vitaminbot.application.supplements import Button, Screen, SupplementController
 from vitaminbot.config import Settings
 from vitaminbot.nutrition.card_content import APPROVED_CARD_CONTENT
 from vitaminbot.nutrition.reference_values import EU_EFSA_REFERENCE_DATASET
@@ -36,30 +39,30 @@ from vitaminbot.telegram.presentation import (
 from vitaminbot.telegram.reminders import TelegramReminderRunner
 
 
-def _controller(context: ContextTypes.DEFAULT_TYPE) -> KIR116Controller:
-    return cast(KIR116Controller, context.application.bot_data["kir116_controller"])
+def _controller(context: ContextTypes.DEFAULT_TYPE) -> SupplementController:
+    return cast(SupplementController, context.application.bot_data["kir116_controller"])
 
 
-def _schedule_controller(context: ContextTypes.DEFAULT_TYPE) -> KIR120Controller | None:
+def _schedule_controller(context: ContextTypes.DEFAULT_TYPE) -> IntakeController | None:
     value = context.application.bot_data.get("kir120_controller")
-    return None if value is None else cast(KIR120Controller, value)
+    return None if value is None else cast(IntakeController, value)
 
 
-def _nutrient_controller(context: ContextTypes.DEFAULT_TYPE) -> KIR146Controller | None:
+def _nutrient_controller(context: ContextTypes.DEFAULT_TYPE) -> NutrientReferenceController | None:
     value = context.application.bot_data.get("kir146_controller")
-    return None if value is None else cast(KIR146Controller, value)
+    return None if value is None else cast(NutrientReferenceController, value)
 
 
 def _applicability_controller(
     context: ContextTypes.DEFAULT_TYPE,
-) -> KIR174Controller | None:
+) -> ApplicabilityController | None:
     value = context.application.bot_data.get("kir174_controller")
-    return None if value is None else cast(KIR174Controller, value)
+    return None if value is None else cast(ApplicabilityController, value)
 
 
-def _vertical_controller(context: ContextTypes.DEFAULT_TYPE) -> KIR122Controller | None:
+def _vertical_controller(context: ContextTypes.DEFAULT_TYPE) -> NutritionController | None:
     value = context.application.bot_data.get("kir122_controller")
-    return None if value is None else cast(KIR122Controller, value)
+    return None if value is None else cast(NutritionController, value)
 
 
 def _only_applicability_actions(screen: Screen) -> bool:
@@ -175,8 +178,8 @@ def _telegram_user_id(update: Update) -> int | None:
 
 
 def _resolve_start_screen(
-    base: KIR116Controller,
-    schedule: KIR120Controller | None,
+    base: SupplementController,
+    schedule: IntakeController | None,
     telegram_user_id: int,
 ) -> tuple[Screen, str]:
     if base.has_supplements(telegram_user_id) and schedule is not None:
@@ -528,12 +531,12 @@ async def _reminder_post_shutdown(
 
 def build_application(
     token: str,
-    controller: KIR116Controller,
-    schedule_controller: KIR120Controller | None = None,
+    controller: SupplementController,
+    schedule_controller: IntakeController | None = None,
     reminder_runner: TelegramReminderRunner | None = None,
-    nutrient_controller: KIR146Controller | None = None,
-    vertical_controller: KIR122Controller | None = None,
-    applicability_controller: KIR174Controller | None = None,
+    nutrient_controller: NutrientReferenceController | None = None,
+    vertical_controller: NutritionController | None = None,
+    applicability_controller: ApplicabilityController | None = None,
 ) -> Application[Any, Any, Any, Any, Any, Any]:
     builder = ApplicationBuilder().token(token).concurrent_updates(False)
     if reminder_runner is not None:
@@ -580,7 +583,7 @@ def main() -> None:
         raise SystemExit("DATABASE_URL is required")
 
     kir116_store = KIR116Store(settings.database_url)
-    kir116_controller = KIR116Controller(kir116_store)
+    kir116_controller = SupplementController(kir116_store)
 
     routine_times = RoutineTimes.from_strings(
         settings.reminder_morning_time,
@@ -591,7 +594,7 @@ def main() -> None:
         settings.database_url,
         routine_times=routine_times,
     )
-    kir120_controller = KIR120Controller(
+    kir120_controller = IntakeController(
         kir120_store,
         later_delay=timedelta(minutes=settings.reminder_later_minutes),
     )
@@ -600,7 +603,7 @@ def main() -> None:
         poll_seconds=settings.reminder_poll_seconds,
     )
     applicability_store = KIR174Store(settings.database_url)
-    applicability_controller = KIR174Controller(
+    applicability_controller = ApplicabilityController(
         base_store=kir116_store,
         store=applicability_store,
     )
@@ -608,13 +611,13 @@ def main() -> None:
         registry=APPROVED_CARD_CONTENT,
         dataset=EU_EFSA_REFERENCE_DATASET,
     )
-    nutrient_controller = KIR146Controller(
+    nutrient_controller = NutrientReferenceController(
         nutrient_renderer,
         context_provider=applicability_controller.card_context,
         jit_prompt_provider=applicability_controller.prompt_for_card,
     )
     kir122_store = KIR122Store(settings.database_url)
-    kir122_controller = KIR122Controller(
+    kir122_controller = NutritionController(
         base_store=kir116_store,
         store=kir122_store,
         applicability_controller=applicability_controller,
