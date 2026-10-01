@@ -109,13 +109,9 @@ def test_history_applied_stale_invalid_and_empty_states_are_explicit() -> None:
     assert applied.text.startswith("Исправление сохранено.")
     assert "Отметок пока нет." in applied.text
 
-    stale = render_history_action_result(
-        HistoryActionResult(status=HistoryActionStatus.STALE)
-    )
+    stale = render_history_action_result(HistoryActionResult(status=HistoryActionStatus.STALE))
     assert "Повторное исправление не записано." in stale.text
     assert [button.callback_data for row in stale.rows for button in row] == ["k120h"]
 
-    invalid = render_history_action_result(
-        HistoryActionResult(status=HistoryActionStatus.INVALID)
-    )
+    invalid = render_history_action_result(HistoryActionResult(status=HistoryActionStatus.INVALID))
     assert "История не изменена." in invalid.text
