@@ -137,6 +137,17 @@ class HistoryEntry:
     correctable: bool
 
 
+@dataclass(frozen=True, slots=True)
+class AdherenceSummaryRecord:
+    days: int
+    start_date: date
+    end_date: date
+    planned: int
+    taken: int
+    skipped: int
+    unresolved: int
+
+
 def _parse_clock(value: str) -> time:
     try:
         parsed = time.fromisoformat(value)
@@ -682,6 +693,58 @@ class KIR120Store:
             )
             self._cancel_claimed_deliveries(conn, occurrence_id, now)
             return self._occurrence_in_connection(conn, user_id, occurrence_id)
+
+    def adherence_summary(
+        self,
+        user_id: UUID,
+        now: datetime,
+        *,
+        days: int,
+    ) -> AdherenceSummaryRecord:
+        now = _require_aware(now)
+        if days < 1:
+            raise ValueError("days must be positive")
+
+        timezone_name = self._timezone_for_user(user_id)
+        try:
+            zone = ZoneInfo(timezone_name)
+        except ZoneInfoNotFoundError as exc:
+            raise InvalidScheduleTime("stored timezone is not a valid IANA timezone") from exc
+
+        end_date = now.astimezone(zone).date()
+        start_date = end_date - timedelta(days=days - 1)
+
+        # Ensure the current local day exists when a user opens stats before the worker loop.
+        self.materialize_user_date(user_id, end_date)
+
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT
+                    count(*) AS planned,
+                    count(*) FILTER (WHERE state = 'taken') AS taken,
+                    count(*) FILTER (WHERE state = 'skipped') AS skipped,
+                    count(*) FILTER (
+                        WHERE state IN ('pending', 'needs_review')
+                    ) AS unresolved
+                FROM reminder_occurrences
+                WHERE user_id = %s
+                  AND cancelled_at IS NULL
+                  AND local_date BETWEEN %s AND %s
+                  AND due_at <= %s
+                """,
+                (user_id, start_date, end_date, now),
+            ).fetchone()
+        assert row is not None
+        return AdherenceSummaryRecord(
+            days=days,
+            start_date=start_date,
+            end_date=end_date,
+            planned=int(row["planned"]),
+            taken=int(row["taken"]),
+            skipped=int(row["skipped"]),
+            unresolved=int(row["unresolved"]),
+        )
 
     def history(self, user_id: UUID, limit: int = 20) -> tuple[HistoryEntry, ...]:
         with self._connect() as conn:

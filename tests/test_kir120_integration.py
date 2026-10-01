@@ -463,7 +463,7 @@ def test_today_requires_explicit_timezone_and_bot_registers_kir120_commands(
     )
     assert application.bot_data["kir116_controller"] is kir116
     assert application.bot_data["kir120_controller"] is controller
-    assert len(application.handlers[0]) == 11
+    assert len(application.handlers[0]) == 12
 
 
 class _RecordingBot:
@@ -949,3 +949,94 @@ def test_inventory_underflow_never_blocks_taken_and_requests_reconciliation(
 
     with _connect(database_url, schema) as conn:
         assert conn.execute("SELECT count(*) FROM intake_events").fetchone() == (1,)
+
+
+def test_adherence_summary_counts_due_states_and_correction_as_unresolved(
+    kir120_system: tuple[KIR116Controller, KIR120Controller, KIR120Store, str, str],
+) -> None:
+    kir116, _, store, _, _ = kir120_system
+    telegram_user_id = 701016
+    user_id = _prepare_planned_user(kir116, store, telegram_user_id)
+
+    taken_occurrence = store.materialize_user_date(user_id, date(2026, 9, 18))[0]
+    skipped_occurrence = store.materialize_user_date(user_id, date(2026, 9, 19))[0]
+
+    taken = store.take(
+        user_id,
+        taken_occurrence.occurrence_id,
+        taken_occurrence.revision,
+        "adherence:taken",
+        datetime(2026, 9, 18, 6, 0, tzinfo=UTC),
+    )
+    store.skip(
+        user_id,
+        skipped_occurrence.occurrence_id,
+        skipped_occurrence.revision,
+        "adherence:skip",
+        datetime(2026, 9, 19, 6, 0, tzinfo=UTC),
+    )
+
+    before_today_due = store.adherence_summary(
+        user_id,
+        datetime(2026, 9, 20, 4, 0, tzinfo=UTC),
+        days=7,
+    )
+    assert before_today_due.planned == 2
+    assert before_today_due.taken == 1
+    assert before_today_due.skipped == 1
+    assert before_today_due.unresolved == 0
+
+    after_today_due = store.adherence_summary(
+        user_id,
+        datetime(2026, 9, 20, 6, 0, tzinfo=UTC),
+        days=7,
+    )
+    assert after_today_due.planned == 3
+    assert after_today_due.taken == 1
+    assert after_today_due.skipped == 1
+    assert after_today_due.unresolved == 1
+
+    store.correct_latest(
+        user_id,
+        taken_occurrence.occurrence_id,
+        taken.revision,
+        "adherence:correct",
+        datetime(2026, 9, 20, 6, 5, tzinfo=UTC),
+    )
+    corrected = store.adherence_summary(
+        user_id,
+        datetime(2026, 9, 20, 6, 10, tzinfo=UTC),
+        days=7,
+    )
+    assert corrected.planned == 3
+    assert corrected.taken == 0
+    assert corrected.skipped == 1
+    assert corrected.unresolved == 2
+
+
+def test_adherence_summary_excludes_occurrences_cancelled_by_pause(
+    kir120_system: tuple[KIR116Controller, KIR120Controller, KIR120Store, str, str],
+) -> None:
+    kir116, _, store, database_url, schema = kir120_system
+    telegram_user_id = 701017
+    user_id = _prepare_planned_user(kir116, store, telegram_user_id)
+    now = datetime(2026, 9, 20, 6, 0, tzinfo=UTC)
+
+    occurrences = store.today(user_id, now)
+    assert len(occurrences) == 1
+
+    supplement_store = KIR116Store(database_url, schema=schema)
+    supplement = supplement_store.list_supplements(user_id)[0]
+    supplement_store.pause_supplement(
+        user_id,
+        "adherence:pause",
+        supplement.instance_id,
+        supplement.revision,
+        now,
+    )
+
+    summary = store.adherence_summary(user_id, now, days=7)
+    assert summary.planned == 0
+    assert summary.taken == 0
+    assert summary.skipped == 0
+    assert summary.unresolved == 0

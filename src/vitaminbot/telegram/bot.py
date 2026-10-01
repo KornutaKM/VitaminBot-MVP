@@ -33,6 +33,7 @@ from vitaminbot.persistence.kir120 import KIR120Store, RoutineTimes
 from vitaminbot.persistence.kir122 import KIR122Store
 from vitaminbot.persistence.kir174 import KIR174Store
 from vitaminbot.presentation.telegram import (
+    render_adherence,
     render_inventory_edit,
     render_quick_add,
     render_supplement_detail,
@@ -390,6 +391,15 @@ async def _history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _reply(update, _operational_screen(context, screen, surface="history"))
 
 
+async def _stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    telegram_user_id = _telegram_user_id(update)
+    controller = _schedule_controller(context)
+    if telegram_user_id is None or controller is None:
+        return
+    view = await asyncio.to_thread(controller.adherence_view, telegram_user_id)
+    await _reply(update, render_adherence(view))
+
+
 async def _composition(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     telegram_user_id = _telegram_user_id(update)
     controller = _vertical_controller(context)
@@ -534,6 +544,7 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     structured_add = False
     structured_supplement = False
     structured_inventory = False
+    structured_adherence = False
     if query.data == "a":
         quick_add_view = await asyncio.to_thread(
             _controller(context).quick_add_start,
@@ -613,6 +624,13 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         screen = render_today(today_view)
         structured_today = True
+    elif query.data == "k120a" and schedule_controller is not None:
+        adherence_view = await asyncio.to_thread(
+            schedule_controller.adherence_view,
+            telegram_user_id,
+        )
+        screen = render_adherence(adherence_view)
+        structured_adherence = True
     elif query.data.startswith(("k120t:", "k120s:", "k120l:")) and schedule_controller is not None:
         result = await asyncio.to_thread(
             schedule_controller.apply_today_action_view,
@@ -637,7 +655,13 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             action_key=action_key,
         )
     if not applicability_action:
-        if structured_today or structured_add or structured_supplement or structured_inventory:
+        if (
+            structured_today
+            or structured_add
+            or structured_supplement
+            or structured_inventory
+            or structured_adherence
+        ):
             pass
         elif scientific:
             screen = _scientific_screen(screen)
@@ -704,6 +728,7 @@ def build_application(
         application.add_handler(CommandHandler("today", _today))
         application.add_handler(CommandHandler("plan", _plan))
         application.add_handler(CommandHandler("history", _history))
+        application.add_handler(CommandHandler("stats", _stats))
     application.add_handler(CommandHandler("help", _help))
     if nutrient_controller is not None:
         application.add_handler(CommandHandler("nutrient", _nutrient))

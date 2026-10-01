@@ -5,6 +5,11 @@ from datetime import UTC, datetime, time, timedelta
 from decimal import Decimal
 
 from vitaminbot.application.kir116 import Button, Screen
+from vitaminbot.application.views.adherence import (
+    AdherenceStatus,
+    AdherenceView,
+    AdherenceWindowView,
+)
 from vitaminbot.application.views.today import (
     TodayActionResult,
     TodayActionStatus,
@@ -166,6 +171,43 @@ class KIR120Controller:
         return TodayActionResult(
             status=TodayActionStatus.APPLIED,
             view=self.today_view(telegram_user_id, now=current),
+        )
+
+    def adherence_view(
+        self,
+        telegram_user_id: int,
+        *,
+        now: datetime | None = None,
+    ) -> AdherenceView:
+        user_id = self._store.ensure_user(telegram_user_id)
+        current = _utc_now(now)
+        windows: list[AdherenceWindowView] = []
+        try:
+            for days in (7, 30):
+                record = self._store.adherence_summary(
+                    user_id,
+                    current,
+                    days=days,
+                )
+                windows.append(
+                    AdherenceWindowView(
+                        days=record.days,
+                        start_date=record.start_date,
+                        end_date=record.end_date,
+                        planned=record.planned,
+                        taken=record.taken,
+                        skipped=record.skipped,
+                        unresolved=record.unresolved,
+                    )
+                )
+        except MissingTimezone:
+            return AdherenceView(status=AdherenceStatus.MISSING_TIMEZONE)
+        except InvalidScheduleTime:
+            return AdherenceView(status=AdherenceStatus.INVALID_SCHEDULE)
+
+        return AdherenceView(
+            status=AdherenceStatus.READY,
+            windows=tuple(windows),
         )
 
     def plan(self, telegram_user_id: int, *, prefix: str = "") -> Screen:

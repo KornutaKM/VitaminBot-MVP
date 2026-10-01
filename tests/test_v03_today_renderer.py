@@ -107,7 +107,7 @@ def test_render_today_empty_day_keeps_navigation() -> None:
 
     assert "На сегодня ничего не запланировано." in screen.text
     callbacks = [button.callback_data for row in screen.rows for button in row]
-    assert callbacks == ["k120p", "k120h"]
+    assert callbacks == ["k120p", "k120h", "k120a"]
 
 
 def test_render_today_action_result_keeps_stale_action_explicit() -> None:
