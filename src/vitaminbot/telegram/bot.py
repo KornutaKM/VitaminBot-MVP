@@ -32,7 +32,11 @@ from vitaminbot.persistence.kir116 import KIR116Store
 from vitaminbot.persistence.kir120 import KIR120Store, RoutineTimes
 from vitaminbot.persistence.kir122 import KIR122Store
 from vitaminbot.persistence.kir174 import KIR174Store
-from vitaminbot.presentation.telegram import render_today, render_today_action_result
+from vitaminbot.presentation.telegram import (
+    render_quick_add,
+    render_today,
+    render_today_action_result,
+)
 from vitaminbot.telegram.presentation import (
     project_v02_scientific_shell,
     project_v02_screen,
@@ -204,10 +208,16 @@ async def _start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def _add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     telegram_user_id = _telegram_user_id(update)
-    if telegram_user_id is None:
+    message = update.effective_message
+    chat = update.effective_chat
+    if telegram_user_id is None or message is None or chat is None:
         return
-    screen = await asyncio.to_thread(_controller(context).add, telegram_user_id)
-    await _reply(update, _operational_screen(context, screen, surface="add"))
+    view = await asyncio.to_thread(
+        _controller(context).quick_add_start,
+        telegram_user_id,
+        action_key=f"cmd:add:{chat.id}:{message.message_id}",
+    )
+    await _reply(update, render_quick_add(view))
 
 
 async def _supplements(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -277,6 +287,22 @@ async def _cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     telegram_user_id = _telegram_user_id(update)
     if telegram_user_id is None:
         return
+
+    base_controller = _controller(context)
+    quick_waiting = await asyncio.to_thread(
+        base_controller.quick_add_pending,
+        telegram_user_id,
+    )
+    if quick_waiting:
+        view = await asyncio.to_thread(
+            base_controller.quick_add_callback,
+            telegram_user_id,
+            "qac",
+            action_key="cmd:cancel:quick-add",
+        )
+        await _reply(update, render_quick_add(view))
+        return
+
     applicability_controller = _applicability_controller(context)
     if applicability_controller is not None:
         waiting = await asyncio.to_thread(
@@ -387,6 +413,21 @@ async def _text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     action_key = f"msg:{chat.id}:{message.message_id}"
+    base_controller = _controller(context)
+    quick_waiting = await asyncio.to_thread(
+        base_controller.quick_add_pending,
+        telegram_user_id,
+    )
+    if quick_waiting:
+        view = await asyncio.to_thread(
+            base_controller.quick_add_text,
+            telegram_user_id,
+            message.text,
+            action_key=action_key,
+        )
+        await _reply(update, render_quick_add(view))
+        return
+
     applicability_controller = _applicability_controller(context)
     if applicability_controller is not None:
         waiting = await asyncio.to_thread(
@@ -462,7 +503,25 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     scientific = False
     applicability_action = False
     structured_today = False
-    if query.data.startswith("k174") and applicability_controller is not None:
+    structured_add = False
+    if query.data == "a":
+        quick_add_view = await asyncio.to_thread(
+            _controller(context).quick_add_start,
+            telegram_user_id,
+            action_key=action_key,
+        )
+        screen = render_quick_add(quick_add_view)
+        structured_add = True
+    elif query.data == "qac" or query.data.startswith(("qau:", "qaq:", "qab:")):
+        quick_add_view = await asyncio.to_thread(
+            _controller(context).quick_add_callback,
+            telegram_user_id,
+            query.data,
+            action_key=action_key,
+        )
+        screen = render_quick_add(quick_add_view)
+        structured_add = True
+    elif query.data.startswith("k174") and applicability_controller is not None:
         applicability_action = True
         screen = await asyncio.to_thread(
             applicability_controller.callback,
@@ -485,11 +544,11 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             query.data,
         )
     elif query.data == "k120today" and schedule_controller is not None:
-        view = await asyncio.to_thread(
+        today_view = await asyncio.to_thread(
             schedule_controller.today_view,
             telegram_user_id,
         )
-        screen = render_today(view)
+        screen = render_today(today_view)
         structured_today = True
     elif query.data.startswith(("k120t:", "k120s:", "k120l:")) and schedule_controller is not None:
         result = await asyncio.to_thread(
@@ -515,7 +574,7 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             action_key=action_key,
         )
     if not applicability_action:
-        if structured_today:
+        if structured_today or structured_add:
             pass
         elif scientific:
             screen = _scientific_screen(screen)
