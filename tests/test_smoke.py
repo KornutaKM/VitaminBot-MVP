@@ -16,10 +16,8 @@ def test_healthcheck_is_ok() -> None:
 def test_settings_are_loaded_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("DATABASE_URL", "postgresql://example.invalid/vitaminbot")
-    monkeypatch.setenv("REDIS_URL", "redis://example.invalid/0")
 
     settings = Settings.from_environment()
 
     assert settings.app_env == "test"
     assert settings.database_url == "postgresql://example.invalid/vitaminbot"
-    assert settings.redis_url == "redis://example.invalid/0"

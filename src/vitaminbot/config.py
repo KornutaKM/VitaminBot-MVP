@@ -23,7 +23,6 @@ class Settings:
 
     app_env: str
     database_url: str | None
-    redis_url: str
     telegram_bot_token: str | None
     reminder_morning_time: str
     reminder_day_time: str
@@ -37,7 +36,6 @@ class Settings:
         return cls(
             app_env=os.getenv("APP_ENV", "development"),
             database_url=os.getenv("DATABASE_URL"),
-            redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
             telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN"),
             reminder_morning_time=os.getenv("REMINDER_MORNING_TIME", "08:00"),
             reminder_day_time=os.getenv("REMINDER_DAY_TIME", "13:00"),

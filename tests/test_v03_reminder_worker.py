@@ -17,7 +17,6 @@ def _settings(
     return Settings(
         app_env="test",
         database_url=database_url,
-        redis_url="redis://unused",
         telegram_bot_token=token,
         reminder_morning_time="08:00",
         reminder_day_time="13:00",
