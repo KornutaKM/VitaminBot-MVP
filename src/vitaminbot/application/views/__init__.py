@@ -1,5 +1,6 @@
 """Structured application-layer view models."""
 
+from vitaminbot.application.views.add import QuickAddStep, QuickAddView
 from vitaminbot.application.views.today import (
     TodayActionResult,
     TodayActionStatus,
@@ -11,6 +12,8 @@ from vitaminbot.application.views.today import (
 )
 
 __all__ = [
+    "QuickAddStep",
+    "QuickAddView",
     "TodayActionResult",
     "TodayActionStatus",
     "TodayOccurrenceState",

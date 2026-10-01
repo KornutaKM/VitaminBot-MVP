@@ -6,6 +6,7 @@ from decimal import Decimal, InvalidOperation
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from vitaminbot.application.views.add import QuickAddStep, QuickAddView
 from vitaminbot.persistence.kir116 import (
     BotSession,
     InvalidTransition,
@@ -90,6 +91,216 @@ class KIR116Controller:
     def has_supplements(self, telegram_user_id: int) -> bool:
         user_id = self._store.ensure_user(telegram_user_id)
         return bool(self._store.list_supplements(user_id))
+
+    def quick_add_pending(self, telegram_user_id: int) -> bool:
+        user_id = self._store.ensure_user(telegram_user_id)
+        session = self._store.get_session(user_id)
+        return (
+            session is not None
+            and session.pending_text == "quick"
+            and session.state in {"manual_name", "manual_unit", "plan_quantity", "plan_bucket"}
+        )
+
+    def quick_add_start(
+        self,
+        telegram_user_id: int,
+        *,
+        action_key: str,
+    ) -> QuickAddView:
+        user_id = self._store.ensure_user(telegram_user_id)
+        try:
+            draft = self._store.begin_quick(user_id, action_key)
+        except (InvalidTransition, StaleAction, RecordNotFound):
+            return QuickAddView(step=QuickAddStep.STALE)
+        return QuickAddView(
+            step=QuickAddStep.NAME,
+            draft_id=draft.draft_id,
+            revision=draft.revision,
+        )
+
+    def quick_add_text(
+        self,
+        telegram_user_id: int,
+        value: str,
+        *,
+        action_key: str,
+    ) -> QuickAddView:
+        user_id = self._store.ensure_user(telegram_user_id)
+        session = self._store.get_session(user_id)
+        if session is None or session.pending_text != "quick":
+            return QuickAddView(step=QuickAddStep.INVALID)
+
+        try:
+            if session.state == "manual_name":
+                name = self._validate_name(value)
+                draft = self._store.set_manual_name(user_id, action_key, name)
+                return QuickAddView(
+                    step=QuickAddStep.UNIT,
+                    name=draft.product_name,
+                    draft_id=draft.draft_id,
+                    revision=draft.revision,
+                )
+            if session.state == "manual_unit":
+                existing_draft = self._store.get_draft(user_id)
+                if existing_draft is None:
+                    return QuickAddView(step=QuickAddStep.STALE)
+                return QuickAddView(
+                    step=QuickAddStep.UNIT,
+                    name=existing_draft.product_name,
+                    draft_id=existing_draft.draft_id,
+                    revision=existing_draft.revision,
+                )
+            if session.state == "plan_quantity":
+                quantity = self._parse_positive_decimal(value)
+                next_session = self._store.set_plan_quantity(
+                    user_id,
+                    action_key,
+                    quantity,
+                )
+                if next_session.target_instance_id is None:
+                    return QuickAddView(step=QuickAddStep.INVALID)
+                record = self._store.supplement(user_id, next_session.target_instance_id)
+                return QuickAddView(
+                    step=QuickAddStep.BUCKET,
+                    name=record.name,
+                    unit_label=record.unit_label,
+                    quantity=next_session.pending_quantity,
+                    supplement_instance_id=record.instance_id,
+                    supplement_revision=record.revision,
+                    revision=next_session.revision,
+                )
+            if session.state == "plan_bucket":
+                if session.target_instance_id is None:
+                    return QuickAddView(step=QuickAddStep.STALE)
+                record = self._store.supplement(user_id, session.target_instance_id)
+                return QuickAddView(
+                    step=QuickAddStep.BUCKET,
+                    name=record.name,
+                    unit_label=record.unit_label,
+                    quantity=session.pending_quantity,
+                    supplement_instance_id=record.instance_id,
+                    supplement_revision=record.revision,
+                    revision=session.revision,
+                )
+        except ValueError:
+            if session.state == "manual_name":
+                existing_draft = self._store.get_draft(user_id)
+                return QuickAddView(
+                    step=QuickAddStep.NAME,
+                    draft_id=None if existing_draft is None else existing_draft.draft_id,
+                    revision=None if existing_draft is None else existing_draft.revision,
+                )
+            if session.state == "plan_quantity" and session.target_instance_id is not None:
+                record = self._store.supplement(user_id, session.target_instance_id)
+                return QuickAddView(
+                    step=QuickAddStep.QUANTITY,
+                    name=record.name,
+                    unit_label=record.unit_label,
+                    supplement_instance_id=record.instance_id,
+                    supplement_revision=record.revision,
+                )
+            return QuickAddView(step=QuickAddStep.INVALID)
+        except (InvalidTransition, StaleAction, RecordNotFound):
+            return QuickAddView(step=QuickAddStep.STALE)
+
+        return QuickAddView(step=QuickAddStep.INVALID)
+
+    def quick_add_callback(
+        self,
+        telegram_user_id: int,
+        data: str,
+        *,
+        action_key: str,
+    ) -> QuickAddView:
+        user_id = self._store.ensure_user(telegram_user_id)
+        parts = data.split(":")
+        action = parts[0]
+        try:
+            if action == "qac":
+                self._store.cancel_pending(user_id)
+                return QuickAddView(step=QuickAddStep.CANCELLED)
+            if action == "qau":
+                if len(parts) != 4:
+                    return QuickAddView(step=QuickAddStep.INVALID)
+                draft_id = parts[1]
+                expected_revision = int(parts[2])
+                unit = UNIT_CODES.get(parts[3])
+                if unit is None:
+                    return QuickAddView(step=QuickAddStep.INVALID)
+                record = self._store.confirm_quick_unit_and_begin_plan(
+                    user_id,
+                    action_key,
+                    draft_id,
+                    expected_revision,
+                    unit,
+                )
+                return QuickAddView(
+                    step=QuickAddStep.QUANTITY,
+                    name=record.name,
+                    unit_label=record.unit_label,
+                    supplement_instance_id=record.instance_id,
+                    supplement_revision=record.revision,
+                )
+            if action == "qaq":
+                if len(parts) != 2:
+                    return QuickAddView(step=QuickAddStep.INVALID)
+                if parts[1] == "custom":
+                    session = self._store.get_session(user_id)
+                    if (
+                        session is None
+                        or session.pending_text != "quick"
+                        or session.target_instance_id is None
+                    ):
+                        return QuickAddView(step=QuickAddStep.STALE)
+                    record = self._store.supplement(user_id, session.target_instance_id)
+                    return QuickAddView(
+                        step=QuickAddStep.QUANTITY,
+                        name=record.name,
+                        unit_label=record.unit_label,
+                        supplement_instance_id=record.instance_id,
+                        supplement_revision=record.revision,
+                    )
+                quantity = self._parse_positive_decimal(parts[1])
+                session = self._store.set_plan_quantity(user_id, action_key, quantity)
+                if session.target_instance_id is None:
+                    return QuickAddView(step=QuickAddStep.INVALID)
+                record = self._store.supplement(user_id, session.target_instance_id)
+                return QuickAddView(
+                    step=QuickAddStep.BUCKET,
+                    name=record.name,
+                    unit_label=record.unit_label,
+                    quantity=session.pending_quantity,
+                    supplement_instance_id=record.instance_id,
+                    supplement_revision=record.revision,
+                    revision=session.revision,
+                )
+            if action == "qab":
+                if len(parts) != 3:
+                    return QuickAddView(step=QuickAddStep.INVALID)
+                bucket = BUCKET_CODES.get(parts[1])
+                if bucket is None:
+                    return QuickAddView(step=QuickAddStep.INVALID)
+                record = self._store.save_plan(
+                    user_id,
+                    action_key,
+                    bucket,
+                    int(parts[2]),
+                )
+                return QuickAddView(
+                    step=QuickAddStep.COMPLETE,
+                    name=record.name,
+                    unit_label=record.unit_label,
+                    quantity=record.plan_quantity,
+                    bucket=record.plan_bucket,
+                    supplement_instance_id=record.instance_id,
+                    supplement_revision=record.revision,
+                )
+        except (IndexError, ValueError):
+            return QuickAddView(step=QuickAddStep.INVALID)
+        except (InvalidTransition, StaleAction, RecordNotFound):
+            return QuickAddView(step=QuickAddStep.STALE)
+
+        return QuickAddView(step=QuickAddStep.INVALID)
 
     def add(self, telegram_user_id: int) -> Screen:
         self._store.ensure_user(telegram_user_id)
@@ -592,9 +803,16 @@ class KIR116Controller:
             text=(
                 f"{prefix}{record.name}\n\n"
                 "Status: Confirmed manual entry\n"
-                f"Label serving: {KIR116Controller._display_decimal(record.units_per_serving)} "
-                f"{record.unit_label}\n"
-                f"Your plan: {plan}\n"
+                + (
+                    f"Tracked unit: 1 {record.unit_label}\n"
+                    if record.serving_basis_type == "per_consumption_unit"
+                    else (
+                        "Label serving: "
+                        f"{KIR116Controller._display_decimal(record.units_per_serving)} "
+                        f"{record.unit_label}\n"
+                    )
+                )
+                + f"Your plan: {plan}\n"
                 f"{plan_note}\n"
                 "Product facts and your plan are stored separately."
             ),

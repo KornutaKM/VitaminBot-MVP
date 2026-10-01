@@ -68,6 +68,7 @@ class SupplementRecord:
     plan_bucket: str | None
     plan_unit_label: str | None
     plan_revision: int | None
+    serving_basis_type: str = "per_label_portion"
 
 
 class KIR116Store:
@@ -168,6 +169,7 @@ class KIR116Store:
             plan_bucket=row["plan_bucket"],
             plan_unit_label=row["plan_unit_label"],
             plan_revision=row["plan_revision"],
+            serving_basis_type=row["serving_basis_type"],
         )
 
     @staticmethod
@@ -359,6 +361,64 @@ class KIR116Store:
                 self._complete_action(conn, user_id, action_key, draft.draft_id)
             return draft
 
+    def begin_quick(self, user_id: UUID, action_key: str) -> ManualDraft:
+        """Start a fresh quick-add draft without inventing label-serving facts."""
+        with self._connect() as conn:
+            claimed, result_ref = self._claim_action(conn, user_id, action_key, "begin_quick")
+            if not claimed:
+                draft = self._draft_by_ref(conn, user_id, result_ref)
+                if draft is None:
+                    draft = self._draft_for_user(conn, user_id)
+                if draft is None:
+                    raise InvalidTransition("quick-add draft is no longer active")
+                return draft
+
+            existing = conn.execute(
+                """
+                SELECT draft_id, product_name, unit_label, units_per_serving, revision
+                FROM manual_supplement_drafts
+                WHERE user_id = %s
+                FOR UPDATE
+                """,
+                (user_id,),
+            ).fetchone()
+            if existing is None:
+                draft_id = uuid4().hex[:16]
+                row = conn.execute(
+                    """
+                    INSERT INTO manual_supplement_drafts (draft_id, user_id)
+                    VALUES (%s, %s)
+                    RETURNING draft_id, product_name, unit_label, units_per_serving, revision
+                    """,
+                    (draft_id, user_id),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    """
+                    UPDATE manual_supplement_drafts
+                    SET product_name = NULL,
+                        unit_label = NULL,
+                        units_per_serving = NULL,
+                        revision = revision + 1,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = %s
+                    RETURNING draft_id, product_name, unit_label, units_per_serving, revision
+                    """,
+                    (user_id,),
+                ).fetchone()
+            assert row is not None
+            draft = self._draft_from_row(row)
+            self._upsert_session(
+                conn,
+                user_id,
+                state="manual_name",
+                draft_id=draft.draft_id,
+                pending_text="quick",
+                expected_revision=draft.revision,
+            )
+            self._complete_action(conn, user_id, action_key, draft.draft_id)
+            return draft
+
     def set_manual_name(self, user_id: UUID, action_key: str, name: str) -> ManualDraft:
         with self._connect() as conn:
             claimed, result_ref = self._claim_action(conn, user_id, action_key, "manual_name")
@@ -393,6 +453,7 @@ class KIR116Store:
                 user_id,
                 state="manual_unit",
                 draft_id=draft.draft_id,
+                pending_text=session.pending_text,
                 expected_revision=draft.revision,
             )
             self._complete_action(conn, user_id, action_key, draft.draft_id)
@@ -446,6 +507,182 @@ class KIR116Store:
             )
             self._complete_action(conn, user_id, action_key, draft.draft_id)
             return draft
+
+    def confirm_quick_unit_and_begin_plan(
+        self,
+        user_id: UUID,
+        action_key: str,
+        draft_id: str,
+        expected_revision: int,
+        unit_label: str,
+    ) -> SupplementRecord:
+        """Confirm quick-add identity/unit and continue directly to plan quantity."""
+        if unit_label not in _COUNT_UNIT_LABELS:
+            raise ValueError("quick add supports count-based product units only")
+        with self._connect() as conn:
+            claimed, result_ref = self._claim_action(conn, user_id, action_key, "quick_unit")
+            if not claimed and result_ref is not None:
+                return self._supplement_by_id(conn, user_id, result_ref)
+
+            session = self._locked_session(conn, user_id, "manual_unit")
+            if (
+                session.pending_text != "quick"
+                or session.draft_id != draft_id
+                or session.expected_revision != expected_revision
+            ):
+                raise StaleAction("quick-add unit callback is stale")
+
+            row = conn.execute(
+                """
+                SELECT draft_id, product_name, unit_label, units_per_serving, revision
+                FROM manual_supplement_drafts
+                WHERE draft_id = %s
+                  AND user_id = %s
+                  AND revision = %s
+                FOR UPDATE
+                """,
+                (draft_id, user_id, expected_revision),
+            ).fetchone()
+            if row is None:
+                raise StaleAction("quick-add draft changed before unit confirmation")
+            draft = self._draft_from_row(row)
+            if draft.product_name is None:
+                raise InvalidTransition("quick-add draft has no product name")
+
+            token = draft.draft_id
+            source_id = f"source:manual:{token}"
+            product_id = f"product:manual:{token}"
+            formulation_id = f"formulation:manual:{token}"
+            unit_id = f"unit:manual:{token}"
+            basis_id = f"basis:manual:{token}"
+            instance_id = f"instance:manual:{token}"
+
+            conn.execute(
+                """
+                INSERT INTO source_records (
+                    source_id,
+                    authority,
+                    source_type,
+                    title,
+                    stable_identifier,
+                    version,
+                    retrieved_on
+                )
+                VALUES (
+                    %s,
+                    'User declaration',
+                    'user_declaration',
+                    'Quick supplement entry',
+                    %s,
+                    '1',
+                    CURRENT_DATE
+                )
+                """,
+                (source_id, f"quick-entry:{token}"),
+            )
+            conn.execute(
+                """
+                INSERT INTO products (
+                    product_id,
+                    name,
+                    market_jurisdiction_status
+                )
+                VALUES (%s, 'Quick supplement record', 'unknown')
+                """,
+                (product_id,),
+            )
+            conn.execute(
+                """
+                INSERT INTO product_formulations (formulation_id, product_id, version)
+                VALUES (%s, %s, '1')
+                """,
+                (formulation_id, product_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO formulation_sources (formulation_id, source_id)
+                VALUES (%s, %s)
+                """,
+                (formulation_id, source_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO consumption_units (
+                    unit_id,
+                    formulation_id,
+                    label_name,
+                    source_id
+                )
+                VALUES (%s, %s, %s, %s)
+                """,
+                (unit_id, formulation_id, unit_label, source_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO product_servings (
+                    basis_id,
+                    formulation_id,
+                    basis_type,
+                    label_text,
+                    source_id,
+                    basis_quantity,
+                    basis_unit,
+                    consumption_unit_id
+                )
+                VALUES (
+                    %s,
+                    %s,
+                    'per_consumption_unit',
+                    %s,
+                    %s,
+                    1,
+                    'count',
+                    %s
+                )
+                """,
+                (
+                    basis_id,
+                    formulation_id,
+                    f"1 {unit_label} tracked unit",
+                    source_id,
+                    unit_id,
+                ),
+            )
+            conn.execute(
+                """
+                INSERT INTO user_supplements (
+                    instance_id,
+                    user_id,
+                    formulation_id,
+                    container_label,
+                    current_consumption_unit_id,
+                    current_serving_basis_id
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    instance_id,
+                    user_id,
+                    formulation_id,
+                    draft.product_name,
+                    unit_id,
+                    basis_id,
+                ),
+            )
+            conn.execute(
+                "DELETE FROM manual_supplement_drafts WHERE draft_id = %s",
+                (draft_id,),
+            )
+            self._upsert_session(
+                conn,
+                user_id,
+                state="plan_quantity",
+                target_instance_id=instance_id,
+                pending_text="quick",
+                expected_revision=1,
+            )
+            self._complete_action(conn, user_id, action_key, instance_id)
+            return self._supplement_by_id(conn, user_id, instance_id)
 
     def set_manual_serving_quantity(
         self,
@@ -742,6 +979,7 @@ class KIR116Store:
                 user_id,
                 state="plan_bucket",
                 target_instance_id=session.target_instance_id,
+                pending_text=session.pending_text,
                 pending_quantity=quantity,
                 expected_revision=session.expected_revision,
             )
@@ -1429,6 +1667,7 @@ class KIR116Store:
                 unit.unit_id,
                 unit.label_name AS unit_label,
                 serving.basis_quantity AS units_per_serving,
+                serving.basis_type AS serving_basis_type,
                 planned.consumption_units AS plan_quantity,
                 planned.schedule_label AS plan_bucket,
                 plan_unit.label_name AS plan_unit_label,
