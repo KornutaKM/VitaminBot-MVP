@@ -25,6 +25,12 @@ from vitaminbot.application.views.today import (
     TodayView,
     build_today_view,
 )
+from vitaminbot.application.views.totals import (
+    NutrientContributorView,
+    NutrientTotalsView,
+    RegimenTotalsStatus,
+    RegimenTotalsView,
+)
 
 __all__ = [
     "AccountDeletionStatus",
@@ -35,8 +41,12 @@ __all__ = [
     "AdherenceWindowView",
     "InventoryEditStep",
     "InventoryEditView",
+    "NutrientContributorView",
+    "NutrientTotalsView",
     "QuickAddStep",
     "QuickAddView",
+    "RegimenTotalsStatus",
+    "RegimenTotalsView",
     "SupplementDetailStatus",
     "SupplementDetailView",
     "TodayActionResult",

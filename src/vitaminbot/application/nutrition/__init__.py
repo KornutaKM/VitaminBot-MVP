@@ -2,13 +2,23 @@
 
 from vitaminbot.application.kir122 import KIR122Controller, VerticalView
 from vitaminbot.application.kir146 import KIR146Controller, NutrientCardRenderer
+from vitaminbot.application.views.totals import (
+    NutrientContributorView,
+    NutrientTotalsView,
+    RegimenTotalsStatus,
+    RegimenTotalsView,
+)
 
 NutritionController = KIR122Controller
 NutrientReferenceController = KIR146Controller
 
 __all__ = [
+    "NutrientContributorView",
     "NutrientReferenceController",
+    "NutrientTotalsView",
     "NutrientCardRenderer",
     "NutritionController",
+    "RegimenTotalsStatus",
+    "RegimenTotalsView",
     "VerticalView",
 ]

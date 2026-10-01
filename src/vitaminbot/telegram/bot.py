@@ -43,6 +43,7 @@ from vitaminbot.presentation.telegram import (
     render_adherence,
     render_inventory_edit,
     render_quick_add,
+    render_regimen_totals,
     render_supplement_detail,
     render_today,
     render_today_action_result,
@@ -275,6 +276,7 @@ async def _help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "• /plan — повторяющийся план\n"
             "• /history — история и исправления\n"
             "• /stats — сводка отметок за 7 и 30 дней\n"
+            "• /totals — итоги нутриентов по подтверждённому составу и плану\n"
             "• /profile — технические настройки\n"
             "• /export — выгрузить данные аккаунта в JSON\n"
             "• /delete_account — удалить аккаунт и связанные данные\n"
@@ -287,6 +289,7 @@ async def _help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             (Button("Добавить добавку", "a"),),
             (Button("Добавки", "ls"), Button("План", "k120p")),
             (Button("История", "k120h"),),
+            (Button("Итоги", "k122tot"), Button("Статистика", "k120a")),
         ),
     )
     await _reply(update, project_v02_screen(screen, surface="help"))
@@ -462,8 +465,8 @@ async def _totals(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     controller = _vertical_controller(context)
     if telegram_user_id is None or controller is None:
         return
-    screen = await asyncio.to_thread(controller.totals, telegram_user_id)
-    await _reply(update, _operational_screen(context, screen, surface="totals"))
+    view = await asyncio.to_thread(controller.totals_view, telegram_user_id)
+    await _reply(update, render_regimen_totals(view))
 
 
 async def _safety(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -595,6 +598,7 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     structured_inventory = False
     structured_adherence = False
     structured_account = False
+    structured_totals = False
     if query.data == "a":
         quick_add_view = await asyncio.to_thread(
             _controller(context).quick_add_start,
@@ -661,6 +665,13 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             query.data,
             action_key=action_key,
         )
+    elif query.data == "k122tot" and vertical_controller is not None:
+        totals_view = await asyncio.to_thread(
+            vertical_controller.totals_view,
+            telegram_user_id,
+        )
+        screen = render_regimen_totals(totals_view)
+        structured_totals = True
     elif query.data.startswith("k122") and vertical_controller is not None:
         screen = await asyncio.to_thread(
             vertical_controller.callback,
@@ -722,6 +733,7 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             or structured_inventory
             or structured_adherence
             or structured_account
+            or structured_totals
         ):
             pass
         elif scientific:

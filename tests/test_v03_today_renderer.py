@@ -74,6 +74,7 @@ def test_render_today_matches_compact_russian_daily_loop() -> None:
     assert "k120w:occ-mg:4" in callbacks
     assert "k120p" in callbacks
     assert "k120h" in callbacks
+    assert "k122tot" in callbacks
 
     assert "k120t:occ-d3:4" not in callbacks
     assert "k120s:occ-d3:4" not in callbacks
@@ -107,7 +108,7 @@ def test_render_today_empty_day_keeps_navigation() -> None:
 
     assert "На сегодня ничего не запланировано." in screen.text
     callbacks = [button.callback_data for row in screen.rows for button in row]
-    assert callbacks == ["k120p", "k120h", "k120a"]
+    assert callbacks == ["k120p", "k120h", "k122tot", "k120a"]
 
 
 def test_render_today_action_result_keeps_stale_action_explicit() -> None:

@@ -73,7 +73,7 @@ def render_today(view: TodayView) -> Screen:
             text=f"{header}\n\nНа сегодня ничего не запланировано.",
             rows=(
                 (Button("План", "k120p"), Button("История", "k120h")),
-                (Button("Статистика", "k120a"),),
+                (Button("Итоги", "k122tot"), Button("Статистика", "k120a")),
             ),
         )
 
@@ -133,7 +133,7 @@ def render_today(view: TodayView) -> Screen:
     if lines[-1] == "":
         lines.pop()
     rows.append((Button("План", "k120p"), Button("История", "k120h")))
-    rows.append((Button("Статистика", "k120a"),))
+    rows.append((Button("Итоги", "k122tot"), Button("Статистика", "k120a")))
     return Screen(text="\n".join(lines), rows=tuple(rows))
 
 
