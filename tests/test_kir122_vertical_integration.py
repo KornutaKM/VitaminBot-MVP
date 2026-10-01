@@ -1155,9 +1155,7 @@ def test_quick_add_composition_confirms_label_serving_without_changing_plan_unit
     assert after_serving.plan_quantity == Decimal("2")
     assert after_serving.revision == before.revision + 1
 
-    magnesium = next(
-        item for item in nutrient.nutrients if item.substance_key == "magnesium"
-    )
+    magnesium = next(item for item in nutrient.nutrients if item.substance_key == "magnesium")
     amount = vertical.apply_composition_action_view(
         telegram_user_id,
         (
