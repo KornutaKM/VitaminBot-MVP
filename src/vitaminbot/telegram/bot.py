@@ -33,6 +33,7 @@ from vitaminbot.persistence.kir120 import KIR120Store, RoutineTimes
 from vitaminbot.persistence.kir122 import KIR122Store
 from vitaminbot.persistence.kir174 import KIR174Store
 from vitaminbot.presentation.telegram import (
+    render_adherence,
     render_inventory_edit,
     render_quick_add,
     render_supplement_detail,
@@ -296,13 +297,13 @@ async def _cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         telegram_user_id,
     )
     if quick_waiting:
-        quick_add_view = await asyncio.to_thread(
+        view = await asyncio.to_thread(
             base_controller.quick_add_callback,
             telegram_user_id,
             "qac",
             action_key="cmd:cancel:quick-add",
         )
-        await _reply(update, render_quick_add(quick_add_view))
+        await _reply(update, render_quick_add(view))
         return
 
     inventory_waiting = await asyncio.to_thread(
@@ -310,11 +311,11 @@ async def _cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         telegram_user_id,
     )
     if inventory_waiting:
-        inventory_view = await asyncio.to_thread(
+        view = await asyncio.to_thread(
             base_controller.inventory_edit_cancel,
             telegram_user_id,
         )
-        await _reply(update, render_inventory_edit(inventory_view))
+        await _reply(update, render_inventory_edit(view))
         return
 
     applicability_controller = _applicability_controller(context)
@@ -390,6 +391,15 @@ async def _history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _reply(update, _operational_screen(context, screen, surface="history"))
 
 
+async def _stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    telegram_user_id = _telegram_user_id(update)
+    controller = _schedule_controller(context)
+    if telegram_user_id is None or controller is None:
+        return
+    view = await asyncio.to_thread(controller.adherence_view, telegram_user_id)
+    await _reply(update, render_adherence(view))
+
+
 async def _composition(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     telegram_user_id = _telegram_user_id(update)
     controller = _vertical_controller(context)
@@ -433,13 +443,13 @@ async def _text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         telegram_user_id,
     )
     if quick_waiting:
-        quick_add_view = await asyncio.to_thread(
+        view = await asyncio.to_thread(
             base_controller.quick_add_text,
             telegram_user_id,
             message.text,
             action_key=action_key,
         )
-        await _reply(update, render_quick_add(quick_add_view))
+        await _reply(update, render_quick_add(view))
         return
 
     inventory_waiting = await asyncio.to_thread(
@@ -447,13 +457,13 @@ async def _text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         telegram_user_id,
     )
     if inventory_waiting:
-        inventory_view = await asyncio.to_thread(
+        view = await asyncio.to_thread(
             base_controller.inventory_edit_text,
             telegram_user_id,
             message.text,
             action_key=action_key,
         )
-        await _reply(update, render_inventory_edit(inventory_view))
+        await _reply(update, render_inventory_edit(view))
         return
 
     applicability_controller = _applicability_controller(context)
@@ -534,55 +544,56 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     structured_add = False
     structured_supplement = False
     structured_inventory = False
+    structured_adherence = False
     if query.data == "a":
-        quick_add_view = await asyncio.to_thread(
+        view = await asyncio.to_thread(
             _controller(context).quick_add_start,
             telegram_user_id,
             action_key=action_key,
         )
-        screen = render_quick_add(quick_add_view)
+        screen = render_quick_add(view)
         structured_add = True
     elif query.data == "qac" or query.data.startswith(("qau:", "qaq:", "qab:")):
-        quick_add_view = await asyncio.to_thread(
+        view = await asyncio.to_thread(
             _controller(context).quick_add_callback,
             telegram_user_id,
             query.data,
             action_key=action_key,
         )
-        screen = render_quick_add(quick_add_view)
+        screen = render_quick_add(view)
         structured_add = True
     elif query.data.startswith("o:"):
-        supplement_view = await asyncio.to_thread(
+        view = await asyncio.to_thread(
             _controller(context).supplement_detail_callback_view,
             telegram_user_id,
             query.data,
         )
-        screen = render_supplement_detail(supplement_view)
+        screen = render_supplement_detail(view)
         structured_supplement = True
     elif query.data.startswith(("ps:", "rs:")):
-        supplement_view = await asyncio.to_thread(
+        view = await asyncio.to_thread(
             _controller(context).supplement_lifecycle_callback_view,
             telegram_user_id,
             query.data,
             action_key=action_key,
         )
-        screen = render_supplement_detail(supplement_view)
+        screen = render_supplement_detail(view)
         structured_supplement = True
     elif query.data.startswith("iv:"):
-        inventory_view = await asyncio.to_thread(
+        view = await asyncio.to_thread(
             _controller(context).inventory_edit_start,
             telegram_user_id,
             query.data,
             action_key=action_key,
         )
-        screen = render_inventory_edit(inventory_view)
+        screen = render_inventory_edit(view)
         structured_inventory = True
     elif query.data == "ivc":
-        inventory_view = await asyncio.to_thread(
+        view = await asyncio.to_thread(
             _controller(context).inventory_edit_cancel,
             telegram_user_id,
         )
-        screen = render_inventory_edit(inventory_view)
+        screen = render_inventory_edit(view)
         structured_inventory = True
     elif query.data.startswith("k174") and applicability_controller is not None:
         applicability_action = True
@@ -607,13 +618,23 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             query.data,
         )
     elif query.data == "k120today" and schedule_controller is not None:
-        today_view = await asyncio.to_thread(
+        view = await asyncio.to_thread(
             schedule_controller.today_view,
             telegram_user_id,
         )
-        screen = render_today(today_view)
+        screen = render_today(view)
         structured_today = True
-    elif query.data.startswith(("k120t:", "k120s:", "k120l:")) and schedule_controller is not None:
+    elif query.data == "k120a" and schedule_controller is not None:
+        view = await asyncio.to_thread(
+            schedule_controller.adherence_view,
+            telegram_user_id,
+        )
+        screen = render_adherence(view)
+        structured_adherence = True
+    elif (
+        query.data.startswith(("k120t:", "k120s:", "k120l:"))
+        and schedule_controller is not None
+    ):
         result = await asyncio.to_thread(
             schedule_controller.apply_today_action_view,
             telegram_user_id,
@@ -637,7 +658,13 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             action_key=action_key,
         )
     if not applicability_action:
-        if structured_today or structured_add or structured_supplement or structured_inventory:
+        if (
+            structured_today
+            or structured_add
+            or structured_supplement
+            or structured_inventory
+            or structured_adherence
+        ):
             pass
         elif scientific:
             screen = _scientific_screen(screen)
@@ -704,6 +731,7 @@ def build_application(
         application.add_handler(CommandHandler("today", _today))
         application.add_handler(CommandHandler("plan", _plan))
         application.add_handler(CommandHandler("history", _history))
+        application.add_handler(CommandHandler("stats", _stats))
     application.add_handler(CommandHandler("help", _help))
     if nutrient_controller is not None:
         application.add_handler(CommandHandler("nutrient", _nutrient))

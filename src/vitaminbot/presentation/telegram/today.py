@@ -71,7 +71,10 @@ def render_today(view: TodayView) -> Screen:
     if not view.occurrences:
         return Screen(
             text=f"{header}\n\nНа сегодня ничего не запланировано.",
-            rows=((Button("План", "k120p"), Button("История", "k120h")),),
+            rows=(
+                (Button("План", "k120p"), Button("История", "k120h")),
+                (Button("Статистика", "k120a"),),
+            ),
         )
 
     lines = [header, ""]
@@ -130,6 +133,7 @@ def render_today(view: TodayView) -> Screen:
     if lines[-1] == "":
         lines.pop()
     rows.append((Button("План", "k120p"), Button("История", "k120h")))
+    rows.append((Button("Статистика", "k120a"),))
     return Screen(text="\n".join(lines), rows=tuple(rows))
 
 
@@ -157,7 +161,10 @@ def _header(view: TodayView) -> str:
     if view.local_date is None:
         return "Сегодня"
     value = view.local_date
-    return f"Сегодня · {_WEEKDAYS_RU[value.weekday()]}, {value.day} {_MONTHS_RU[value.month]}"
+    return (
+        f"Сегодня · {_WEEKDAYS_RU[value.weekday()]}, "
+        f"{value.day} {_MONTHS_RU[value.month]}"
+    )
 
 
 def _state_label(state: TodayOccurrenceState) -> tuple[str, str]:
