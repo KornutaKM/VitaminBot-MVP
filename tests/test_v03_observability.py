@@ -6,15 +6,11 @@ import logging
 from vitaminbot.observability import LoggingMetricsSink, NULL_METRICS
 
 
-def test_logging_metrics_are_numeric_and_do_not_accept_context_fields(
-    caplog: object,
-) -> None:
+def test_logging_metrics_are_numeric_and_do_not_accept_context_fields() -> None:
     logger = logging.getLogger("vitaminbot.tests.metrics")
     sink = LoggingMetricsSink(logger)
 
     logger.setLevel(logging.INFO)
-    handler = logging.Handler()
-
     records: list[logging.LogRecord] = []
 
     class _Capture(logging.Handler):
