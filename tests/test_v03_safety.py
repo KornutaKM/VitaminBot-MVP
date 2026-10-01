@@ -6,8 +6,8 @@ from vitaminbot.application.nutrition import (
 )
 from vitaminbot.application.safety_envelope import (
     SafetyComparisonContext,
-    SafetyEvidenceState,
     SafetyEnvelope,
+    SafetyEvidenceState,
     SafetyFact,
     SafetyProvenance,
     SafetyStatus,
