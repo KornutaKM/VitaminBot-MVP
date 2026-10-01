@@ -73,3 +73,8 @@ vitaminbot-worker
 ```
 
 The bot process handles Telegram updates only. The worker owns reminder materialization, durable claiming, revalidation, delivery, and delivery-result persistence. Running multiple bot processes does not start extra reminder loops inside them.
+
+## Account data controls
+
+Use `/export` to receive a versioned JSON snapshot of the data currently associated with your VitaminBot account. Use `/delete_account` to start a separate confirmation flow for permanent deletion. Deletion requires a short-lived one-time confirmation token; an old confirmation cannot delete a newly recreated account.
+
