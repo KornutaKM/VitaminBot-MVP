@@ -57,3 +57,19 @@ docker compose ps
 ```
 
 Stop the services with `docker compose down`. Remove development volumes only when you intentionally want to discard local data: `docker compose down -v`.
+
+
+Run migrations once, then start the Telegram update process and reminder worker separately:
+
+```bash
+vitaminbot-migrate
+vitaminbot-bot
+```
+
+In a second terminal/process:
+
+```bash
+vitaminbot-worker
+```
+
+The bot process handles Telegram updates only. The worker owns reminder materialization, durable claiming, revalidation, delivery, and delivery-result persistence. Running multiple bot processes does not start extra reminder loops inside them.

@@ -463,6 +463,7 @@ def test_today_requires_explicit_timezone_and_bot_registers_kir120_commands(
     )
     assert application.bot_data["kir116_controller"] is kir116
     assert application.bot_data["kir120_controller"] is controller
+    assert "reminder_runner" not in application.bot_data
     assert len(application.handlers[0]) == 12
 
 
