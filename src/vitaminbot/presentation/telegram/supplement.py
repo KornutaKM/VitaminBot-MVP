@@ -53,6 +53,7 @@ def render_supplement_detail(view: SupplementDetailView) -> Screen:
     plan = _plan_line(view)
     unit = _unit_label(view.unit_label, Decimal("1"))
     basis = _basis_line(view)
+    inventory = _inventory_line(view)
     paused = view.lifecycle_status == "paused"
     status = "На паузе" if paused else "Активен"
     lifecycle_button = (
@@ -63,11 +64,30 @@ def render_supplement_detail(view: SupplementDetailView) -> Screen:
 
     return Screen(
         text=(
-            f"{view.name}\n\nРежим\n{plan}\n\nЕдиница учёта\n{unit}\n{basis}\n\nСтатус\n{status}"
+            f"{view.name}\n\n"
+            "Режим\n"
+            f"{plan}\n\n"
+            "Единица учёта\n"
+            f"{unit}\n"
+            f"{basis}\n\n"
+            "Запас\n"
+            f"{inventory}\n\n"
+            "Статус\n"
+            f"{status}"
         ),
         rows=(
             (Button("Изменить режим", f"p:{token}:{view.revision}"),),
             (Button("Состав и итоги", "k122comp"),),
+            (
+                Button(
+                    (
+                        "Обновить запас"
+                        if view.inventory_remaining_units is not None
+                        else "Указать запас"
+                    ),
+                    f"iv:{token}:{view.revision}",
+                ),
+            ),
             (
                 Button("Изменить название", f"en:{token}:{view.revision}"),
                 Button("Изменить единицу", f"es:{token}:{view.revision}"),
@@ -98,6 +118,27 @@ def _basis_line(view: SupplementDetailView) -> str:
         f"{_decimal(view.units_per_serving)} "
         f"{_unit_label(view.unit_label, view.units_per_serving)} на порцию."
     )
+
+
+def _inventory_line(view: SupplementDetailView) -> str:
+    remaining = view.inventory_remaining_units
+    if remaining is None:
+        return "Не указан"
+    if view.inventory_unit_id != view.unit_id:
+        # Never reinterpret a balance across product-unit revisions.
+        return "Нужно уточнить после смены единицы учёта."
+
+    unit_text = _unit_label(view.unit_label, remaining)
+    line = f"{_decimal(remaining)} {unit_text}"
+    if (
+        view.plan_quantity is not None
+        and view.plan_quantity > 0
+        and view.plan_unit_id is not None
+        and view.inventory_unit_id == view.plan_unit_id
+    ):
+        days = int(remaining // view.plan_quantity)
+        line += f" · ≈ {days} дн."
+    return line
 
 
 def _decimal(value: Decimal) -> str:
