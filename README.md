@@ -38,7 +38,7 @@ mypy src
 pytest
 ```
 
-## PostgreSQL and Redis
+## PostgreSQL
 
 Copy the environment template to a local `.env` file and replace placeholder values where appropriate. The real `.env` file is ignored by Git.
 
