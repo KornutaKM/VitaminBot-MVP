@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import suppress
 from datetime import timedelta
 from typing import Any, cast
 
@@ -44,7 +43,6 @@ from vitaminbot.telegram.presentation import (
     project_v02_scientific_shell,
     project_v02_screen,
 )
-from vitaminbot.telegram.reminders import TelegramReminderRunner
 
 
 def _controller(context: ContextTypes.DEFAULT_TYPE) -> SupplementController:
@@ -674,45 +672,18 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _project_callback(update, context, screen)
 
 
-async def _reminder_post_init(
-    application: Application[Any, Any, Any, Any, Any, Any],
-) -> None:
-    runner_value = application.bot_data.get("reminder_runner")
-    if runner_value is None:
-        return
-    runner = cast(TelegramReminderRunner, runner_value)
-    application.bot_data["reminder_task"] = asyncio.create_task(runner.run_forever(application.bot))
-
-
-async def _reminder_post_shutdown(
-    application: Application[Any, Any, Any, Any, Any, Any],
-) -> None:
-    task_value = application.bot_data.get("reminder_task")
-    if not isinstance(task_value, asyncio.Task):
-        return
-    task_value.cancel()
-    with suppress(asyncio.CancelledError):
-        await task_value
-
-
 def build_application(
     token: str,
     controller: SupplementController,
     schedule_controller: IntakeController | None = None,
-    reminder_runner: TelegramReminderRunner | None = None,
     nutrient_controller: NutrientReferenceController | None = None,
     vertical_controller: NutritionController | None = None,
     applicability_controller: ApplicabilityController | None = None,
 ) -> Application[Any, Any, Any, Any, Any, Any]:
-    builder = ApplicationBuilder().token(token).concurrent_updates(False)
-    if reminder_runner is not None:
-        builder = builder.post_init(_reminder_post_init).post_shutdown(_reminder_post_shutdown)
-    application = builder.build()
+    application = ApplicationBuilder().token(token).concurrent_updates(False).build()
     application.bot_data["kir116_controller"] = controller
     if schedule_controller is not None:
         application.bot_data["kir120_controller"] = schedule_controller
-    if reminder_runner is not None:
-        application.bot_data["reminder_runner"] = reminder_runner
     if nutrient_controller is not None:
         application.bot_data["kir146_controller"] = nutrient_controller
     if vertical_controller is not None:
@@ -765,10 +736,6 @@ def main() -> None:
         kir120_store,
         later_delay=timedelta(minutes=settings.reminder_later_minutes),
     )
-    reminder_runner = TelegramReminderRunner(
-        kir120_store,
-        poll_seconds=settings.reminder_poll_seconds,
-    )
     applicability_store = KIR174Store(settings.database_url)
     applicability_controller = ApplicabilityController(
         base_store=kir116_store,
@@ -793,7 +760,6 @@ def main() -> None:
         settings.telegram_bot_token,
         kir116_controller,
         schedule_controller=kir120_controller,
-        reminder_runner=reminder_runner,
         nutrient_controller=nutrient_controller,
         vertical_controller=kir122_controller,
         applicability_controller=applicability_controller,
