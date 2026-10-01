@@ -168,8 +168,6 @@ def test_deletion_confirmation_is_explicit_and_nonce_bound() -> None:
     assert callbacks == [f"ad:y:{token}", f"ad:n:{token}"]
     assert "/export" in screen.text
 
-    stale = render_account_deletion(
-        AccountDeletionView(status=AccountDeletionStatus.STALE)
-    )
+    stale = render_account_deletion(AccountDeletionView(status=AccountDeletionStatus.STALE))
     assert "Ничего не удалено" in stale.text
     assert stale.rows == ()
