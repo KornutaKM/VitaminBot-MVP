@@ -50,9 +50,6 @@ def render_inventory_edit(view: InventoryEditView) -> Screen:
 
 def _stale() -> Screen:
     return Screen(
-        text=(
-            "Карточка добавки изменилась до сохранения запаса. "
-            "Остаток не был записан."
-        ),
+        text=("Карточка добавки изменилась до сохранения запаса. Остаток не был записан."),
         rows=((Button("Мои добавки", "ls"),),),
     )
