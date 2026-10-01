@@ -34,6 +34,7 @@ from vitaminbot.persistence.kir122 import KIR122Store
 from vitaminbot.persistence.kir174 import KIR174Store
 from vitaminbot.presentation.telegram import (
     render_quick_add,
+    render_supplement_detail,
     render_today,
     render_today_action_result,
 )
@@ -504,6 +505,7 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     applicability_action = False
     structured_today = False
     structured_add = False
+    structured_supplement = False
     if query.data == "a":
         quick_add_view = await asyncio.to_thread(
             _controller(context).quick_add_start,
@@ -521,6 +523,14 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         screen = render_quick_add(quick_add_view)
         structured_add = True
+    elif query.data.startswith("o:"):
+        supplement_view = await asyncio.to_thread(
+            _controller(context).supplement_detail_callback_view,
+            telegram_user_id,
+            query.data,
+        )
+        screen = render_supplement_detail(supplement_view)
+        structured_supplement = True
     elif query.data.startswith("k174") and applicability_controller is not None:
         applicability_action = True
         screen = await asyncio.to_thread(
@@ -574,7 +584,7 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             action_key=action_key,
         )
     if not applicability_action:
-        if structured_today or structured_add:
+        if structured_today or structured_add or structured_supplement:
             pass
         elif scientific:
             screen = _scientific_screen(screen)
