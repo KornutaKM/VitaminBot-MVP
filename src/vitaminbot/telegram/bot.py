@@ -18,7 +18,7 @@ from telegram.ext import (
 
 from vitaminbot.application.account import AccountController
 from vitaminbot.application.applicability import ApplicabilityController
-from vitaminbot.application.intake import IntakeController, TodayActionStatus
+from vitaminbot.application.intake import IntakeController, PlanActionStatus, TodayActionStatus
 from vitaminbot.application.nutrition import (
     NutrientCardRenderer,
     NutrientReferenceController,
@@ -42,6 +42,8 @@ from vitaminbot.presentation.telegram import (
     render_account_deletion,
     render_adherence,
     render_inventory_edit,
+    render_plan,
+    render_plan_action_result,
     render_quick_add,
     render_regimen_totals,
     render_supplement_detail,
@@ -379,8 +381,11 @@ async def _cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             telegram_user_id,
         )
         if waiting:
-            screen = await asyncio.to_thread(schedule_controller.cancel, telegram_user_id)
-            await _reply(update, _operational_screen(context, screen))
+            result = await asyncio.to_thread(
+                schedule_controller.cancel_plan_edit_view,
+                telegram_user_id,
+            )
+            await _reply(update, render_plan_action_result(result))
             return
     screen = await asyncio.to_thread(_controller(context).cancel, telegram_user_id)
     await _reply(update, _operational_screen(context, screen))
@@ -400,8 +405,8 @@ async def _plan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     controller = _schedule_controller(context)
     if telegram_user_id is None or controller is None:
         return
-    screen = await asyncio.to_thread(controller.plan, telegram_user_id)
-    await _reply(update, _operational_screen(context, screen, surface="plan"))
+    view = await asyncio.to_thread(controller.plan_view, telegram_user_id)
+    await _reply(update, render_plan(view))
 
 
 async def _history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -559,13 +564,13 @@ async def _text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             telegram_user_id,
         )
         if waiting:
-            screen = await asyncio.to_thread(
-                schedule_controller.text,
+            result = await asyncio.to_thread(
+                schedule_controller.apply_plan_text_view,
                 telegram_user_id,
                 message.text,
                 action_key=action_key,
             )
-            await _reply(update, _operational_screen(context, screen, surface="plan"))
+            await _reply(update, render_plan_action_result(result))
             return
 
     screen = await asyncio.to_thread(
@@ -599,6 +604,7 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     structured_adherence = False
     structured_account = False
     structured_totals = False
+    structured_plan = False
     if query.data == "a":
         quick_add_view = await asyncio.to_thread(
             _controller(context).quick_add_start,
@@ -686,6 +692,31 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             telegram_user_id,
             query.data,
         )
+    elif query.data == "k120p" and schedule_controller is not None:
+        plan_view = await asyncio.to_thread(
+            schedule_controller.plan_view,
+            telegram_user_id,
+        )
+        screen = render_plan(plan_view)
+        structured_plan = True
+    elif query.data == "k120pc" and schedule_controller is not None:
+        plan_result = await asyncio.to_thread(
+            schedule_controller.cancel_plan_edit_view,
+            telegram_user_id,
+        )
+        screen = render_plan_action_result(plan_result)
+        structured_plan = True
+    elif query.data.startswith(("k120b:", "k120e:")) and schedule_controller is not None:
+        plan_result = await asyncio.to_thread(
+            schedule_controller.apply_plan_action_view,
+            telegram_user_id,
+            query.data,
+            action_key=action_key,
+        )
+        if plan_result.status is PlanActionStatus.STALE:
+            _metrics(context).increment("stale_callback_count")
+        screen = render_plan_action_result(plan_result)
+        structured_plan = True
     elif query.data == "k120today" and schedule_controller is not None:
         today_view = await asyncio.to_thread(
             schedule_controller.today_view,
@@ -734,6 +765,7 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             or structured_adherence
             or structured_account
             or structured_totals
+            or structured_plan
         ):
             pass
         elif scientific:
