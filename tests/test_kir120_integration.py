@@ -14,6 +14,8 @@ from telegram import InlineKeyboardMarkup
 
 import vitaminbot.telegram.reminders as reminder_module
 from vitaminbot.application.intake import (
+    HistoryActionStatus,
+    HistoryStatus,
     PlanActionStatus,
     PlanStatus,
     PlanTimeInputError,
@@ -1144,3 +1146,102 @@ def test_structured_plan_bucket_and_exact_time_flow_is_revision_bound(
     assert cancelled.view.items[0].local_time == time(8, 30)
     assert cancelled.view.items[0].quantity == Decimal("2")
     assert store.schedule_session(user_id) is None
+
+
+def test_structured_history_correction_is_two_step_idempotent_and_auditable(
+    kir120_system: tuple[KIR116Controller, KIR120Controller, KIR120Store, str, str],
+) -> None:
+    kir116, controller, store, database_url, schema = kir120_system
+    telegram_user_id = 701018
+    user_id = _prepare_planned_user(kir116, store, telegram_user_id)
+    now = datetime(2026, 9, 20, 6, 0, tzinfo=UTC)
+
+    occurrence = store.today(user_id, now)[0]
+    taken = store.take(
+        user_id,
+        occurrence.occurrence_id,
+        occurrence.revision,
+        "structured-history:taken",
+        now,
+    )
+
+    before = controller.history_view(telegram_user_id)
+    assert before.status is HistoryStatus.READY
+    assert len(before.entries) == 1
+    assert before.entries[0].action_kind == "taken"
+    assert before.entries[0].entered_in_error is False
+    assert before.entries[0].correctable is True
+    assert before.entries[0].occurrence_revision == taken.revision
+
+    callback = f"k120q:{occurrence.occurrence_id}:{taken.revision}"
+    preview = controller.apply_history_action_view(
+        telegram_user_id,
+        callback,
+        action_key="structured-history:preview",
+        now=now,
+    )
+    assert preview.status is HistoryActionStatus.PREVIEW
+    assert preview.preview is not None
+    assert preview.preview.name == occurrence.name
+    assert preview.preview.state == "taken"
+
+    confirm_callback = f"k120c:{preview.preview.occurrence_id}:{preview.preview.expected_revision}"
+    applied = controller.apply_history_action_view(
+        telegram_user_id,
+        confirm_callback,
+        action_key="structured-history:correct",
+        now=now + timedelta(minutes=1),
+    )
+    assert applied.status is HistoryActionStatus.APPLIED
+    assert applied.view is not None
+    assert applied.view.status is HistoryStatus.READY
+
+    correction_entries = [
+        entry for entry in applied.view.entries if entry.action_kind == "correction"
+    ]
+    taken_entries = [entry for entry in applied.view.entries if entry.action_kind == "taken"]
+    assert len(correction_entries) == 1
+    assert len(taken_entries) == 1
+    assert taken_entries[0].entered_in_error is True
+    assert taken_entries[0].correctable is False
+
+    current = store.occurrence(user_id, occurrence.occurrence_id)
+    assert current.state == "needs_review"
+
+    duplicate = controller.apply_history_action_view(
+        telegram_user_id,
+        confirm_callback,
+        action_key="structured-history:correct",
+        now=now + timedelta(minutes=2),
+    )
+    assert duplicate.status is HistoryActionStatus.APPLIED
+
+    stale = controller.apply_history_action_view(
+        telegram_user_id,
+        confirm_callback,
+        action_key="structured-history:stale",
+        now=now + timedelta(minutes=3),
+    )
+    assert stale.status is HistoryActionStatus.STALE
+
+    invalid = controller.apply_history_action_view(
+        telegram_user_id,
+        "k120c:missing-revision",
+        action_key="structured-history:invalid",
+        now=now,
+    )
+    assert invalid.status is HistoryActionStatus.INVALID
+
+    with _connect(database_url, schema) as conn:
+        assert conn.execute(
+            """
+            SELECT count(*)
+            FROM occurrence_actions
+            WHERE occurrence_id = %s
+              AND action_kind = 'correction'
+            """,
+            (occurrence.occurrence_id,),
+        ).fetchone() == (1,)
+        assert conn.execute(
+            "SELECT entered_in_error_at IS NOT NULL FROM intake_events"
+        ).fetchone() == (True,)

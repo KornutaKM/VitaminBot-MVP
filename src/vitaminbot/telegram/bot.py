@@ -18,7 +18,12 @@ from telegram.ext import (
 
 from vitaminbot.application.account import AccountController
 from vitaminbot.application.applicability import ApplicabilityController
-from vitaminbot.application.intake import IntakeController, PlanActionStatus, TodayActionStatus
+from vitaminbot.application.intake import (
+    HistoryActionStatus,
+    IntakeController,
+    PlanActionStatus,
+    TodayActionStatus,
+)
 from vitaminbot.application.nutrition import (
     NutrientCardRenderer,
     NutrientReferenceController,
@@ -41,6 +46,8 @@ from vitaminbot.persistence.kir174 import KIR174Store
 from vitaminbot.presentation.telegram import (
     render_account_deletion,
     render_adherence,
+    render_history,
+    render_history_action_result,
     render_inventory_edit,
     render_plan,
     render_plan_action_result,
@@ -414,8 +421,8 @@ async def _history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     controller = _schedule_controller(context)
     if telegram_user_id is None or controller is None:
         return
-    screen = await asyncio.to_thread(controller.history, telegram_user_id)
-    await _reply(update, _operational_screen(context, screen, surface="history"))
+    view = await asyncio.to_thread(controller.history_view, telegram_user_id)
+    await _reply(update, render_history(view))
 
 
 async def _stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -605,6 +612,7 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     structured_account = False
     structured_totals = False
     structured_plan = False
+    structured_history = False
     if query.data == "a":
         quick_add_view = await asyncio.to_thread(
             _controller(context).quick_add_start,
@@ -731,6 +739,24 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         screen = render_adherence(adherence_view)
         structured_adherence = True
+    elif query.data == "k120h" and schedule_controller is not None:
+        history_view = await asyncio.to_thread(
+            schedule_controller.history_view,
+            telegram_user_id,
+        )
+        screen = render_history(history_view)
+        structured_history = True
+    elif query.data.startswith(("k120q:", "k120c:")) and schedule_controller is not None:
+        history_result = await asyncio.to_thread(
+            schedule_controller.apply_history_action_view,
+            telegram_user_id,
+            query.data,
+            action_key=action_key,
+        )
+        if history_result.status is HistoryActionStatus.STALE:
+            _metrics(context).increment("stale_callback_count")
+        screen = render_history_action_result(history_result)
+        structured_history = True
     elif query.data.startswith(("k120t:", "k120s:", "k120l:")) and schedule_controller is not None:
         result = await asyncio.to_thread(
             schedule_controller.apply_today_action_view,
@@ -766,6 +792,7 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             or structured_account
             or structured_totals
             or structured_plan
+            or structured_history
         ):
             pass
         elif scientific:

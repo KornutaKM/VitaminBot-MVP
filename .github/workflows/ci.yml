@@ -98,6 +98,7 @@ jobs:
           tests/test_v03_quick_add_renderer.py
           tests/test_v03_today_renderer.py
           tests/test_v03_plan.py
+          tests/test_v03_history.py
           tests/test_v03_supplement_detail.py
           tests/test_v03_inventory.py
           tests/test_v03_adherence.py

@@ -11,6 +11,14 @@ from vitaminbot.application.views.adherence import (
     AdherenceView,
     AdherenceWindowView,
 )
+from vitaminbot.application.views.history import (
+    HistoryActionResult,
+    HistoryActionStatus,
+    HistoryCorrectionPreview,
+    HistoryEntryView,
+    HistoryStatus,
+    HistoryView,
+)
 from vitaminbot.application.views.inventory import InventoryEditStep, InventoryEditView
 from vitaminbot.application.views.plan import (
     PlanActionResult,
@@ -48,6 +56,12 @@ __all__ = [
     "AdherenceStatus",
     "AdherenceView",
     "AdherenceWindowView",
+    "HistoryActionResult",
+    "HistoryActionStatus",
+    "HistoryCorrectionPreview",
+    "HistoryEntryView",
+    "HistoryStatus",
+    "HistoryView",
     "InventoryEditStep",
     "InventoryEditView",
     "PlanActionResult",

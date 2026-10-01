@@ -11,6 +11,14 @@ from vitaminbot.application.views.adherence import (
     AdherenceView,
     AdherenceWindowView,
 )
+from vitaminbot.application.views.history import (
+    HistoryActionResult,
+    HistoryActionStatus,
+    HistoryCorrectionPreview,
+    HistoryEntryView,
+    HistoryStatus,
+    HistoryView,
+)
 from vitaminbot.application.views.plan import (
     PlanActionResult,
     PlanActionStatus,
@@ -386,6 +394,80 @@ class KIR120Controller:
             ]
         )
         return Screen(text="\n".join(lines), rows=tuple(rows))
+
+    def history_view(self, telegram_user_id: int) -> HistoryView:
+        user_id = self._store.ensure_user(telegram_user_id)
+        entries = self._store.history(user_id)
+        if not entries:
+            return HistoryView(status=HistoryStatus.EMPTY)
+        return HistoryView(
+            status=HistoryStatus.READY,
+            entries=tuple(
+                HistoryEntryView(
+                    occurrence_id=entry.occurrence_id,
+                    occurrence_revision=entry.occurrence_revision,
+                    action_kind=entry.action_kind,
+                    name=entry.name,
+                    quantity=entry.quantity,
+                    unit_label=entry.unit_label,
+                    created_at=entry.created_at,
+                    entered_in_error=entry.entered_in_error,
+                    correctable=entry.correctable,
+                )
+                for entry in entries
+            ),
+        )
+
+    def apply_history_action_view(
+        self,
+        telegram_user_id: int,
+        data: str,
+        *,
+        action_key: str,
+        now: datetime | None = None,
+    ) -> HistoryActionResult:
+        user_id = self._store.ensure_user(telegram_user_id)
+        parts = data.split(":")
+        if len(parts) != 3 or parts[0] not in {"k120q", "k120c"}:
+            return HistoryActionResult(status=HistoryActionStatus.INVALID)
+
+        occurrence_id = parts[1]
+        try:
+            expected_revision = int(parts[2])
+        except ValueError:
+            return HistoryActionResult(status=HistoryActionStatus.INVALID)
+
+        try:
+            if parts[0] == "k120q":
+                occurrence = self._store.occurrence(user_id, occurrence_id)
+                if occurrence.revision != expected_revision:
+                    return HistoryActionResult(status=HistoryActionStatus.STALE)
+                if occurrence.state not in {"taken", "skipped"}:
+                    return HistoryActionResult(status=HistoryActionStatus.STALE)
+                return HistoryActionResult(
+                    status=HistoryActionStatus.PREVIEW,
+                    preview=HistoryCorrectionPreview(
+                        occurrence_id=occurrence.occurrence_id,
+                        expected_revision=occurrence.revision,
+                        name=occurrence.name,
+                        state=occurrence.state,
+                    ),
+                )
+
+            self._store.correct_latest(
+                user_id,
+                occurrence_id,
+                expected_revision,
+                action_key,
+                _utc_now(now),
+            )
+        except (StaleOccurrence, InvalidOccurrenceState, ScheduleRecordNotFound):
+            return HistoryActionResult(status=HistoryActionStatus.STALE)
+
+        return HistoryActionResult(
+            status=HistoryActionStatus.APPLIED,
+            view=self.history_view(telegram_user_id),
+        )
 
     def history(self, telegram_user_id: int) -> Screen:
         user_id = self._store.ensure_user(telegram_user_id)
