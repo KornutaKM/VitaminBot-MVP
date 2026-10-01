@@ -12,7 +12,7 @@ import pytest
 
 import vitaminbot.telegram.reminders as reminder_module
 from vitaminbot.application.intake import TodayActionResult, TodayActionStatus
-from vitaminbot.observability import LoggingMetricsSink, NULL_METRICS
+from vitaminbot.observability import NULL_METRICS, LoggingMetricsSink
 from vitaminbot.persistence.kir120 import DeliveryClaim
 from vitaminbot.telegram.bot import _callback
 from vitaminbot.telegram.reminders import TelegramReminderRunner
