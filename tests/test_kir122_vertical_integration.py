@@ -13,7 +13,7 @@ from psycopg import sql
 from vitaminbot.application.kir116 import KIR116Controller, Screen
 from vitaminbot.application.kir120 import KIR120Controller
 from vitaminbot.application.kir122 import KIR122Controller
-from vitaminbot.application.nutrition import RegimenTotalsStatus
+from vitaminbot.application.nutrition import CompositionStep, RegimenTotalsStatus
 from vitaminbot.application.safety_envelope import (
     SafetyEvidenceState,
     SafetyStatus,
@@ -1074,3 +1074,137 @@ def test_reference_sources_keep_locator_and_matched_applicability_context(
         if source.scope_note is not None:
             assert source.scope_note in sources.text
         assert source.source_key not in sources.text
+
+
+def test_quick_add_composition_confirms_label_serving_without_changing_plan_unit(
+    vertical_stack: tuple[
+        KIR116Controller,
+        KIR120Controller,
+        KIR122Controller,
+        KIR116Store,
+    ],
+) -> None:
+    base, _schedule, vertical, store = vertical_stack
+    telegram_user_id = 122010
+
+    base.quick_add_start(
+        telegram_user_id,
+        action_key="composition-quick:start",
+    )
+    unit = base.quick_add_text(
+        telegram_user_id,
+        "Magnesium Citrate",
+        action_key="composition-quick:name",
+    )
+    assert unit.draft_id is not None
+    assert unit.revision is not None
+    base.quick_add_callback(
+        telegram_user_id,
+        f"qau:{unit.draft_id}:{unit.revision}:c",
+        action_key="composition-quick:unit",
+    )
+    bucket = base.quick_add_callback(
+        telegram_user_id,
+        "qaq:2",
+        action_key="composition-quick:quantity",
+    )
+    assert bucket.revision is not None
+    base.quick_add_callback(
+        telegram_user_id,
+        f"qab:e:{bucket.revision}",
+        action_key="composition-quick:bucket",
+    )
+
+    user_id = store.ensure_user(telegram_user_id)
+    before = store.list_supplements(user_id)[0]
+    assert before.serving_basis_type == "per_consumption_unit"
+    assert before.plan_quantity == Decimal("2")
+    assert before.plan_unit_id == before.unit_id
+
+    composition = vertical.composition_view(telegram_user_id)
+    assert composition.step is CompositionStep.LIST
+    summary = composition.supplements[0]
+    serving = vertical.apply_composition_action_view(
+        telegram_user_id,
+        f"k122c:{summary.token}:{summary.revision}",
+        action_key="composition-quick:open",
+    )
+    assert serving.step is CompositionStep.SERVING_QUANTITY
+    assert vertical.has_pending_text(telegram_user_id) is True
+
+    invalid_serving = vertical.composition_text_view(
+        telegram_user_id,
+        "not-a-number",
+        action_key="composition-quick:bad-serving",
+    )
+    assert invalid_serving.step is CompositionStep.SERVING_QUANTITY
+    assert invalid_serving.input_error is True
+
+    nutrient = vertical.composition_text_view(
+        telegram_user_id,
+        "2",
+        action_key="composition-quick:serving",
+    )
+    assert nutrient.step is CompositionStep.NUTRIENT
+
+    after_serving = store.supplement(user_id, before.instance_id)
+    assert after_serving.serving_basis_type == "per_label_portion"
+    assert after_serving.units_per_serving == Decimal("2")
+    assert after_serving.unit_id == before.unit_id
+    assert after_serving.plan_unit_id == before.plan_unit_id
+    assert after_serving.plan_quantity == Decimal("2")
+    assert after_serving.revision == before.revision + 1
+
+    magnesium = next(
+        item for item in nutrient.nutrients if item.substance_key == "magnesium"
+    )
+    amount = vertical.apply_composition_action_view(
+        telegram_user_id,
+        (
+            f"k122n:{nutrient.supplement_token}:"
+            f"{nutrient.supplement_revision}:{magnesium.substance_key}"
+        ),
+        action_key="composition-quick:magnesium",
+    )
+    assert amount.step is CompositionStep.AMOUNT
+
+    bad_amount = vertical.composition_text_view(
+        telegram_user_id,
+        "100",
+        action_key="composition-quick:bad-amount",
+    )
+    assert bad_amount.step is CompositionStep.AMOUNT
+    assert bad_amount.input_error is True
+
+    review = vertical.composition_text_view(
+        telegram_user_id,
+        "100 mg",
+        action_key="composition-quick:amount",
+    )
+    assert review.step is CompositionStep.REVIEW
+    assert review.session_revision is not None
+
+    confirm_callback = f"k122ok:{review.session_revision}"
+    complete = vertical.apply_composition_action_view(
+        telegram_user_id,
+        confirm_callback,
+        action_key="composition-quick:confirm",
+    )
+    assert complete.step is CompositionStep.COMPLETE
+    assert complete.nutrient_name == "Магний"
+    assert complete.value == Decimal("100")
+    assert complete.unit == "mg"
+
+    duplicate = vertical.apply_composition_action_view(
+        telegram_user_id,
+        confirm_callback,
+        action_key="composition-quick:confirm",
+    )
+    assert duplicate.step is CompositionStep.COMPLETE
+
+    totals = vertical.totals_view(telegram_user_id)
+    assert totals.status is RegimenTotalsStatus.READY
+    magnesium_total = next(item for item in totals.nutrients if item.name == "Магний")
+    assert magnesium_total.total == Decimal("100000")
+    assert magnesium_total.unit is Unit.MICROGRAM
+    assert magnesium_total.is_complete is True
