@@ -18,7 +18,7 @@ from telegram.ext import (
 
 from vitaminbot.application.account import AccountController
 from vitaminbot.application.applicability import ApplicabilityController
-from vitaminbot.application.intake import IntakeController
+from vitaminbot.application.intake import IntakeController, TodayActionStatus
 from vitaminbot.application.nutrition import (
     NutrientCardRenderer,
     NutrientReferenceController,
@@ -28,6 +28,11 @@ from vitaminbot.application.supplements import Button, Screen, SupplementControl
 from vitaminbot.config import Settings
 from vitaminbot.nutrition.card_content import APPROVED_CARD_CONTENT
 from vitaminbot.nutrition.reference_values import EU_EFSA_REFERENCE_DATASET
+from vitaminbot.observability import (
+    MetricsSink,
+    NULL_METRICS,
+    build_logging_metrics_sink,
+)
 from vitaminbot.persistence.account import AccountStore
 from vitaminbot.persistence.kir116 import KIR116Store
 from vitaminbot.persistence.kir120 import KIR120Store, RoutineTimes
@@ -51,6 +56,11 @@ from vitaminbot.telegram.presentation import (
 def _account_controller(context: ContextTypes.DEFAULT_TYPE) -> AccountController | None:
     value = context.application.bot_data.get("account_controller")
     return None if value is None else cast(AccountController, value)
+
+
+def _metrics(context: ContextTypes.DEFAULT_TYPE) -> MetricsSink:
+    value = context.application.bot_data.get("metrics")
+    return NULL_METRICS if value is None else cast(MetricsSink, value)
 
 
 def _controller(context: ContextTypes.DEFAULT_TYPE) -> SupplementController:
@@ -686,6 +696,8 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             query.data,
             action_key=action_key,
         )
+        if result.status is TodayActionStatus.STALE:
+            _metrics(context).increment("stale_callback_count")
         screen = render_today_action_result(result)
         structured_today = True
     elif query.data.startswith("k120") and schedule_controller is not None:
@@ -731,9 +743,11 @@ def build_application(
     vertical_controller: NutritionController | None = None,
     applicability_controller: ApplicabilityController | None = None,
     account_controller: AccountController | None = None,
+    metrics: MetricsSink = NULL_METRICS,
 ) -> Application[Any, Any, Any, Any, Any, Any]:
     application = ApplicationBuilder().token(token).concurrent_updates(False).build()
     application.bot_data["kir116_controller"] = controller
+    application.bot_data["metrics"] = metrics
     if schedule_controller is not None:
         application.bot_data["kir120_controller"] = schedule_controller
     if nutrient_controller is not None:
@@ -823,6 +837,7 @@ def main() -> None:
         vertical_controller=kir122_controller,
         applicability_controller=applicability_controller,
         account_controller=account_controller,
+        metrics=build_logging_metrics_sink(),
     )
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
