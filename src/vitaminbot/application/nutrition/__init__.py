@@ -2,6 +2,12 @@
 
 from vitaminbot.application.kir122 import KIR122Controller, VerticalView
 from vitaminbot.application.kir146 import KIR146Controller, NutrientCardRenderer
+from vitaminbot.application.views.safety import (
+    SafetySourceItem,
+    SafetySourcesStatus,
+    SafetySourcesView,
+    SafetyView,
+)
 from vitaminbot.application.views.composition import (
     CompositionNutrientOption,
     CompositionStep,
@@ -28,6 +34,10 @@ __all__ = [
     "NutrientTotalsView",
     "NutrientCardRenderer",
     "NutritionController",
+    "SafetySourceItem",
+    "SafetySourcesStatus",
+    "SafetySourcesView",
+    "SafetyView",
     "RegimenTotalsStatus",
     "RegimenTotalsView",
     "VerticalView",
