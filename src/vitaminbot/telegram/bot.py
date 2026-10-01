@@ -814,7 +814,6 @@ def main() -> None:
         base_store=kir116_store,
         store=kir122_store,
         applicability_controller=applicability_controller,
-        account_controller=account_controller,
     )
     application = build_application(
         settings.telegram_bot_token,
@@ -823,6 +822,7 @@ def main() -> None:
         nutrient_controller=nutrient_controller,
         vertical_controller=kir122_controller,
         applicability_controller=applicability_controller,
+        account_controller=account_controller,
     )
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
