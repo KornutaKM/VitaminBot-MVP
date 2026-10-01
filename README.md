@@ -44,8 +44,8 @@ Copy the environment template, set a real local Telegram bot token, then start t
 
 ```bash
 cp .env.example .env
-# edit .env: set POSTGRES_PASSWORD, DATABASE_URL / DATABASE_URL_DOCKER passwords,
-# and TELEGRAM_BOT_TOKEN
+# edit .env: set POSTGRES_PASSWORD and TELEGRAM_BOT_TOKEN.
+# A host PostgreSQL installation is not required.
 
 docker compose up --build
 ```
