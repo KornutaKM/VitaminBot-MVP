@@ -46,6 +46,7 @@ from vitaminbot.persistence.kir174 import KIR174Store
 from vitaminbot.presentation.telegram import (
     render_account_deletion,
     render_adherence,
+    render_composition,
     render_history,
     render_history_action_result,
     render_inventory_edit,
@@ -372,13 +373,13 @@ async def _cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             telegram_user_id,
         )
         if waiting:
-            screen = await asyncio.to_thread(
-                vertical_controller.callback,
+            composition_view = await asyncio.to_thread(
+                vertical_controller.apply_composition_action_view,
                 telegram_user_id,
                 "k122cancel",
                 action_key="cmd:cancel:composition",
             )
-            await _reply(update, screen)
+            await _reply(update, render_composition(composition_view))
             return
 
     schedule_controller = _schedule_controller(context)
@@ -468,8 +469,8 @@ async def _composition(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     controller = _vertical_controller(context)
     if telegram_user_id is None or controller is None:
         return
-    screen = await asyncio.to_thread(controller.composition, telegram_user_id)
-    await _reply(update, _operational_screen(context, screen, surface="composition"))
+    view = await asyncio.to_thread(controller.composition_view, telegram_user_id)
+    await _reply(update, render_composition(view))
 
 
 async def _totals(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -552,16 +553,13 @@ async def _text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             telegram_user_id,
         )
         if waiting:
-            screen = await asyncio.to_thread(
-                vertical_controller.text,
+            composition_view = await asyncio.to_thread(
+                vertical_controller.composition_text_view,
                 telegram_user_id,
                 message.text,
                 action_key=action_key,
             )
-            await _reply(
-                update,
-                _operational_screen(context, screen, surface="composition"),
-            )
+            await _reply(update, render_composition(composition_view))
             return
 
     schedule_controller = _schedule_controller(context)
@@ -613,6 +611,7 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     structured_totals = False
     structured_plan = False
     structured_history = False
+    structured_composition = False
     if query.data == "a":
         quick_add_view = await asyncio.to_thread(
             _controller(context).quick_add_start,
@@ -686,6 +685,18 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         screen = render_regimen_totals(totals_view)
         structured_totals = True
+    elif (
+        query.data in {"k122comp", "k122cancel"}
+        or query.data.startswith(("k122c:", "k122n:", "k122ok:"))
+    ) and vertical_controller is not None:
+        composition_view = await asyncio.to_thread(
+            vertical_controller.apply_composition_action_view,
+            telegram_user_id,
+            query.data,
+            action_key=action_key,
+        )
+        screen = render_composition(composition_view)
+        structured_composition = True
     elif query.data.startswith("k122") and vertical_controller is not None:
         screen = await asyncio.to_thread(
             vertical_controller.callback,
@@ -793,6 +804,7 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             or structured_totals
             or structured_plan
             or structured_history
+            or structured_composition
         ):
             pass
         elif scientific:

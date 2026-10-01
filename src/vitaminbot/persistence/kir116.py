@@ -1259,6 +1259,140 @@ class KIR116Store:
             self._complete_action(conn, user_id, action_key, row["instance_id"])
             return self._supplement_by_id(conn, user_id, row["instance_id"])
 
+    def begin_composition_serving_quantity(
+        self,
+        user_id: UUID,
+        action_key: str,
+        instance_id: str,
+        expected_revision: int,
+    ) -> BotSession:
+        with self._connect() as conn:
+            claimed, _ = self._claim_action(
+                conn,
+                user_id,
+                action_key,
+                "composition_serving_begin",
+            )
+            supplement = self._locked_supplement(conn, user_id, instance_id)
+            if supplement.revision != expected_revision:
+                raise StaleAction("supplement changed before label-serving input")
+            if supplement.serving_basis_type == "per_label_portion":
+                raise InvalidTransition("label serving is already confirmed")
+            if not claimed:
+                session = self._session_for_user(conn, user_id)
+                if session is None or session.state != "composition_serving_quantity":
+                    raise InvalidTransition("composition serving input is no longer active")
+                return session
+            session = self._upsert_session(
+                conn,
+                user_id,
+                state="composition_serving_quantity",
+                target_instance_id=instance_id,
+                expected_revision=expected_revision,
+            )
+            self._complete_action(conn, user_id, action_key, instance_id)
+            return session
+
+    def save_composition_serving_quantity(
+        self,
+        user_id: UUID,
+        action_key: str,
+        quantity: Decimal,
+    ) -> SupplementRecord:
+        if not quantity.is_finite() or quantity <= 0:
+            raise ValueError("label serving quantity must be positive")
+        with self._connect() as conn:
+            claimed, result_ref = self._claim_action(
+                conn,
+                user_id,
+                action_key,
+                "composition_serving_save",
+            )
+            if not claimed and result_ref is not None:
+                return self._supplement_by_id(conn, user_id, result_ref)
+
+            session = self._locked_session(conn, user_id, "composition_serving_quantity")
+            if session.target_instance_id is None or session.expected_revision is None:
+                raise InvalidTransition("composition serving input is incomplete")
+
+            supplement = self._locked_supplement(conn, user_id, session.target_instance_id)
+            if supplement.revision != session.expected_revision:
+                raise StaleAction("supplement changed before label serving was saved")
+            if supplement.serving_basis_type == "per_label_portion":
+                raise StaleAction("label serving changed before save")
+
+            source = conn.execute(
+                """
+                SELECT source_id
+                FROM consumption_units
+                WHERE formulation_id = %s
+                  AND unit_id = %s
+                """,
+                (supplement.formulation_id, supplement.unit_id),
+            ).fetchone()
+            if source is None:
+                raise InvalidTransition("current product-unit provenance is missing")
+
+            next_revision = supplement.revision + 1
+            token = supplement.instance_id.removeprefix("instance:manual:")
+            new_basis_id = f"basis:manual:{token}:label:r{next_revision}"
+            conn.execute(
+                """
+                INSERT INTO product_servings (
+                    basis_id,
+                    formulation_id,
+                    basis_type,
+                    label_text,
+                    source_id,
+                    basis_quantity,
+                    basis_unit,
+                    consumption_unit_id
+                )
+                VALUES (
+                    %s,
+                    %s,
+                    'per_label_portion',
+                    %s,
+                    %s,
+                    %s,
+                    'count',
+                    %s
+                )
+                """,
+                (
+                    new_basis_id,
+                    supplement.formulation_id,
+                    f"{quantity} {supplement.unit_label}",
+                    source["source_id"],
+                    quantity,
+                    supplement.unit_id,
+                ),
+            )
+            row = conn.execute(
+                """
+                UPDATE user_supplements
+                SET current_serving_basis_id = %s,
+                    revision = revision + 1,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE instance_id = %s
+                  AND user_id = %s
+                  AND revision = %s
+                RETURNING instance_id
+                """,
+                (
+                    new_basis_id,
+                    supplement.instance_id,
+                    user_id,
+                    session.expected_revision,
+                ),
+            ).fetchone()
+            if row is None:
+                raise StaleAction("supplement changed before label serving was saved")
+
+            self._clear_session(conn, user_id)
+            self._complete_action(conn, user_id, action_key, supplement.instance_id)
+            return self._supplement_by_id(conn, user_id, supplement.instance_id)
+
     def begin_edit_serving(
         self,
         user_id: UUID,

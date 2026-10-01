@@ -11,6 +11,12 @@ from vitaminbot.application.views.adherence import (
     AdherenceView,
     AdherenceWindowView,
 )
+from vitaminbot.application.views.composition import (
+    CompositionNutrientOption,
+    CompositionStep,
+    CompositionSupplementView,
+    CompositionView,
+)
 from vitaminbot.application.views.history import (
     HistoryActionResult,
     HistoryActionStatus,
@@ -56,6 +62,10 @@ __all__ = [
     "AdherenceStatus",
     "AdherenceView",
     "AdherenceWindowView",
+    "CompositionNutrientOption",
+    "CompositionStep",
+    "CompositionSupplementView",
+    "CompositionView",
     "HistoryActionResult",
     "HistoryActionStatus",
     "HistoryCorrectionPreview",
