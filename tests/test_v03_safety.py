@@ -2,8 +2,8 @@ from vitaminbot.application.nutrition import (
     SafetyContributorView,
     SafetyEntryView,
     SafetySourcesStatus,
-    SafetySourceView,
     SafetySourcesView,
+    SafetySourceView,
     SafetyView,
 )
 from vitaminbot.application.safety_envelope import (
