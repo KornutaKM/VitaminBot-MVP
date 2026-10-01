@@ -9,15 +9,31 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   quality-linux:
     name: Linux — lint, type, and test
-    runs-on: [self-hosted, Linux, X64, vitaminbot]
-    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: vitaminbot_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d vitaminbot_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     env:
-      PGHOST: /var/run/postgresql
-      PGPORT: "55432"
-      PGUSER: nt5user
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/vitaminbot_ci
 
     steps:
       - name: Check out repository
@@ -43,63 +59,25 @@ jobs:
       - name: Mypy
         run: mypy src
 
-      - name: Verify bounded PostgreSQL integration service
+      - name: Verify PostgreSQL service
         shell: bash
         run: |
-          set -euo pipefail
+          python - <<'PY'
+          import os
 
-          pg_isready -h "$PGHOST" -p "$PGPORT" -d postgres
+          import psycopg
 
-          current_user="$(
-            psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d postgres               -Atqc "SELECT current_user"
-          )"
-          test "$current_user" = "$PGUSER"
-
-          role_flags="$(
-            psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d postgres               -At -F '|'               -c "SELECT rolsuper, rolcreaterole, rolcreatedb, rolreplication, rolbypassrls FROM pg_roles WHERE rolname = current_user"
-          )"
-          if [[ "$role_flags" != "f|f|t|f|f" ]]; then
-            echo "Unexpected PostgreSQL CI role privileges: $role_flags" >&2
-            exit 1
-          fi
-
-          test -S "$PGHOST/.s.PGSQL.$PGPORT"
-          if ss -ltn | awk '{print $4}' | grep -Eq '(^|:)55432$'; then
-            echo "PostgreSQL CI port must not have a TCP listener" >&2
-            exit 1
-          fi
-
-      - name: Create isolated PostgreSQL test database
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          database_name="vitaminbot_ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
-          dropdb             --if-exists             --force             -h "$PGHOST"             -p "$PGPORT"             -U "$PGUSER"             "$database_name"
-          createdb             -h "$PGHOST"             -p "$PGPORT"             -U "$PGUSER"             "$database_name"
-
-          {
-            echo "POSTGRES_TEST_DB=$database_name"
-            echo "DATABASE_URL=dbname=$database_name user=$PGUSER host=$PGHOST port=$PGPORT"
-          } >> "$GITHUB_ENV"
+          with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+              assert conn.execute("SELECT 1").fetchone() == (1,)
+          PY
 
       - name: Pytest
         run: pytest
 
-      - name: Drop isolated PostgreSQL test database
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [[ -n "${POSTGRES_TEST_DB:-}" ]]; then
-            dropdb               --if-exists               --force               -h "$PGHOST"               -p "$PGPORT"               -U "$PGUSER"               "$POSTGRES_TEST_DB"
-          fi
-
   safety-regression-linux:
     name: Safety regression — ENG4 independent suite
-    runs-on: [self-hosted, Linux, X64, vitaminbot]
-    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Check out repository
@@ -118,13 +96,14 @@ jobs:
 
       - name: Run independent safety regression suite
         run: pytest -q tests/test_safety_regression_kir121.py
+
   compatibility-windows:
     name: Windows — compatibility (non-blocking)
-    runs-on: [self-hosted, Windows, X64, vitaminbot]
-    timeout-minutes: 10
+    runs-on: windows-latest
+    timeout-minutes: 15
     continue-on-error: true
     env:
-      PSExecutionPolicyPreference: Bypass
+      PYTHONUTF8: "1"
 
     steps:
       - name: Check out repository
