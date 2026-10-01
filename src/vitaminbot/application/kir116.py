@@ -329,14 +329,14 @@ class KIR116Controller:
                     revision=draft.revision,
                 )
             if session.state == "manual_unit":
-                draft = self._store.get_draft(user_id)
-                if draft is None:
+                existing_draft = self._store.get_draft(user_id)
+                if existing_draft is None:
                     return QuickAddView(step=QuickAddStep.STALE)
                 return QuickAddView(
                     step=QuickAddStep.UNIT,
-                    name=draft.product_name,
-                    draft_id=draft.draft_id,
-                    revision=draft.revision,
+                    name=existing_draft.product_name,
+                    draft_id=existing_draft.draft_id,
+                    revision=existing_draft.revision,
                 )
             if session.state == "plan_quantity":
                 quantity = self._parse_positive_decimal(value)
@@ -372,11 +372,11 @@ class KIR116Controller:
                 )
         except ValueError:
             if session.state == "manual_name":
-                draft = self._store.get_draft(user_id)
+                existing_draft = self._store.get_draft(user_id)
                 return QuickAddView(
                     step=QuickAddStep.NAME,
-                    draft_id=None if draft is None else draft.draft_id,
-                    revision=None if draft is None else draft.revision,
+                    draft_id=None if existing_draft is None else existing_draft.draft_id,
+                    revision=None if existing_draft is None else existing_draft.revision,
                 )
             if session.state == "plan_quantity" and session.target_instance_id is not None:
                 record = self._store.supplement(user_id, session.target_instance_id)
