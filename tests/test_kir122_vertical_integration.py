@@ -13,7 +13,11 @@ from psycopg import sql
 from vitaminbot.application.kir116 import KIR116Controller, Screen
 from vitaminbot.application.kir120 import KIR120Controller
 from vitaminbot.application.kir122 import KIR122Controller
-from vitaminbot.application.nutrition import CompositionStep, RegimenTotalsStatus
+from vitaminbot.application.nutrition import (
+    CompositionStep,
+    RegimenTotalsStatus,
+    SafetySourcesStatus,
+)
 from vitaminbot.application.safety_envelope import (
     SafetyEvidenceState,
     SafetyStatus,
@@ -243,6 +247,18 @@ def test_clean_account_vertical_flow_is_snapshot_bound_and_fail_closed(
     assert "Здесь нет персональной рекомендации по дозе." in safety.text
     assert "безопасно для вас" not in safety.text.lower()
 
+    assert vertical.safety_prompt(telegram_user_id) is None
+    structured_safety = vertical.safety_view(telegram_user_id)
+    assert structured_safety.envelopes == envelopes
+    assert structured_safety.show_applicability_profile is False
+    assert structured_safety.iron_scope_token is None
+    safety_revision = structured_safety.context_revision.removeprefix("kir122:")[:12]
+    current_sources_view = vertical.safety_sources_view(
+        telegram_user_id,
+        safety_revision,
+    )
+    assert current_sources_view.status is SafetySourcesStatus.READY
+
     # Why/Sources actions are bound to the exact immutable snapshot revision.
     old_sources = _callback_with_prefix(safety, "k122src:")
     current_plan = schedule.plan(telegram_user_id)
@@ -262,6 +278,13 @@ def test_clean_account_vertical_flow_is_snapshot_bound_and_fail_closed(
     )
     assert "Экран устарел" in stale.text
     assert "не переименовал старый расчёт как новый" in stale.text
+
+    structured_stale = vertical.safety_sources_view(
+        telegram_user_id,
+        safety_revision,
+    )
+    assert structured_stale.status is SafetySourcesStatus.STALE
+    assert structured_stale.sources == ()
 
     today = schedule.today(
         telegram_user_id,
