@@ -76,6 +76,7 @@ def test_migrations_are_reproducible_and_idempotent(
         ("0004", "reminders_today"),
         ("0005", "mvp_vertical_integration"),
         ("0006", "jit_applicability"),
+        ("0007", "supplement_pause_resume"),
     ]
 
 
