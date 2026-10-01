@@ -43,9 +43,7 @@ def render_adherence(view: AdherenceView) -> Screen:
     )
     return Screen(
         text="\n".join(lines),
-        rows=(
-            (Button("Сегодня", "k120today"), Button("История", "k120h")),
-        ),
+        rows=((Button("Сегодня", "k120today"), Button("История", "k120h")),),
     )
 
 
