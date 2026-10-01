@@ -12,8 +12,8 @@ from vitaminbot.application.views.safety import (
     SafetyContributorView,
     SafetyEntryView,
     SafetySourcesStatus,
-    SafetySourceView,
     SafetySourcesView,
+    SafetySourceView,
     SafetyView,
 )
 from vitaminbot.application.views.totals import (
