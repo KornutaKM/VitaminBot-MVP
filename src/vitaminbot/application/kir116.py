@@ -9,9 +9,20 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from vitaminbot.application.views.add import QuickAddStep, QuickAddView
 from vitaminbot.application.views.inventory import InventoryEditStep, InventoryEditView
+from vitaminbot.application.views.profile import (
+    ProfileEditStep,
+    ProfileEditView,
+    ProfileInputError,
+    ProfileView,
+)
 from vitaminbot.application.views.supplement import (
     SupplementDetailStatus,
     SupplementDetailView,
+)
+from vitaminbot.application.views.supplements import (
+    SupplementListItemView,
+    SupplementsStatus,
+    SupplementsView,
 )
 from vitaminbot.persistence.kir116 import (
     BotSession,
@@ -500,6 +511,177 @@ class KIR116Controller:
                 "Photo and barcode options are not shown until their implementation is ready."
             ),
             rows=((Button("Enter manually", "m"),),),
+        )
+
+    def supplements_view(self, telegram_user_id: int) -> SupplementsView:
+        user_id = self._store.ensure_user(telegram_user_id)
+        records = self._store.list_supplements(user_id)
+        if not records:
+            return SupplementsView(status=SupplementsStatus.EMPTY)
+        return SupplementsView(
+            status=SupplementsStatus.READY,
+            items=tuple(
+                SupplementListItemView(
+                    token=record.instance_id.removeprefix("instance:manual:"),
+                    revision=record.revision,
+                    name=record.name,
+                    unit_label=record.unit_label,
+                    lifecycle_status=record.lifecycle_status,
+                    plan_quantity=record.plan_quantity,
+                    plan_bucket=record.plan_bucket,
+                    inventory_remaining_units=record.inventory_remaining_units,
+                    inventory_needs_reconciliation=record.inventory_needs_reconciliation,
+                )
+                for record in records
+            ),
+        )
+
+    def profile_view(
+        self,
+        telegram_user_id: int,
+        *,
+        show_applicability_context: bool = False,
+    ) -> ProfileView:
+        user_id = self._store.ensure_user(telegram_user_id)
+        profile = self._store.profile(user_id)
+        return ProfileView(
+            timezone=profile.timezone,
+            locale=profile.locale,
+            revision=profile.version,
+            show_applicability_context=show_applicability_context,
+        )
+
+    def profile_edit_pending(self, telegram_user_id: int) -> bool:
+        user_id = self._store.ensure_user(telegram_user_id)
+        session = self._store.get_session(user_id)
+        return session is not None and session.state in {"profile_timezone", "profile_locale"}
+
+    def profile_edit_start(
+        self,
+        telegram_user_id: int,
+        data: str,
+        *,
+        action_key: str,
+        show_applicability_context: bool = False,
+    ) -> ProfileEditView:
+        parts = data.split(":")
+        if len(parts) != 2 or parts[0] not in {"pt", "pl"}:
+            return ProfileEditView(step=ProfileEditStep.INVALID)
+        try:
+            expected_revision = int(parts[1])
+        except ValueError:
+            return ProfileEditView(step=ProfileEditStep.INVALID)
+
+        user_id = self._store.ensure_user(telegram_user_id)
+        field = "timezone" if parts[0] == "pt" else "locale"
+        try:
+            self._store.begin_profile_edit(
+                user_id,
+                action_key,
+                field,
+                expected_revision,
+            )
+        except (InvalidTransition, StaleAction, RecordNotFound):
+            return ProfileEditView(
+                step=ProfileEditStep.STALE,
+                profile=self.profile_view(
+                    telegram_user_id,
+                    show_applicability_context=show_applicability_context,
+                ),
+            )
+
+        return ProfileEditView(
+            step=(
+                ProfileEditStep.TIMEZONE
+                if field == "timezone"
+                else ProfileEditStep.LOCALE
+            ),
+            profile=self.profile_view(
+                telegram_user_id,
+                show_applicability_context=show_applicability_context,
+            ),
+            expected_revision=expected_revision,
+        )
+
+    def profile_edit_text(
+        self,
+        telegram_user_id: int,
+        value: str,
+        *,
+        action_key: str,
+        show_applicability_context: bool = False,
+    ) -> ProfileEditView:
+        user_id = self._store.ensure_user(telegram_user_id)
+        session = self._store.get_session(user_id)
+        if session is None or session.state not in {"profile_timezone", "profile_locale"}:
+            return ProfileEditView(step=ProfileEditStep.INVALID)
+
+        field = "timezone" if session.state == "profile_timezone" else "locale"
+        try:
+            normalized = (
+                self._validate_timezone(value)
+                if field == "timezone"
+                else self._validate_locale(value)
+            )
+        except ValueError:
+            return ProfileEditView(
+                step=(
+                    ProfileEditStep.TIMEZONE
+                    if field == "timezone"
+                    else ProfileEditStep.LOCALE
+                ),
+                profile=self.profile_view(
+                    telegram_user_id,
+                    show_applicability_context=show_applicability_context,
+                ),
+                expected_revision=session.expected_revision,
+                error=(
+                    ProfileInputError.INVALID_TIMEZONE
+                    if field == "timezone"
+                    else ProfileInputError.INVALID_LOCALE
+                ),
+            )
+
+        try:
+            profile = self._store.save_profile_field(
+                user_id,
+                action_key,
+                field,
+                normalized,
+            )
+        except (InvalidTransition, StaleAction, RecordNotFound):
+            return ProfileEditView(
+                step=ProfileEditStep.STALE,
+                profile=self.profile_view(
+                    telegram_user_id,
+                    show_applicability_context=show_applicability_context,
+                ),
+            )
+
+        return ProfileEditView(
+            step=ProfileEditStep.COMPLETE,
+            profile=ProfileView(
+                timezone=profile.timezone,
+                locale=profile.locale,
+                revision=profile.version,
+                show_applicability_context=show_applicability_context,
+            ),
+        )
+
+    def profile_edit_cancel(
+        self,
+        telegram_user_id: int,
+        *,
+        show_applicability_context: bool = False,
+    ) -> ProfileEditView:
+        user_id = self._store.ensure_user(telegram_user_id)
+        self._store.cancel_pending(user_id)
+        return ProfileEditView(
+            step=ProfileEditStep.CANCELLED,
+            profile=self.profile_view(
+                telegram_user_id,
+                show_applicability_context=show_applicability_context,
+            ),
         )
 
     def supplements(self, telegram_user_id: int) -> Screen:
