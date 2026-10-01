@@ -47,7 +47,7 @@ def test_unit_of_work_rolls_back_cross_repository_changes_without_commit(
         user_id = uow.supplements.ensure_user(telegram_user_id)
         assert uow.intake.ensure_user(telegram_user_id) == user_id
         assert uow.applicability.profile(user_id).revision == 0
-        assert uow.nutrition.manual_substance_keys(user_id) == ()
+        assert uow.nutrition.session(user_id) is None
 
     assert _user_count(database_url, schema, telegram_user_id) == 0
 
