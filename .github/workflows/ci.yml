@@ -84,6 +84,7 @@ jobs:
           tests/test_v03_adherence.py
           tests/test_v03_account_data.py
           tests/test_v03_observability.py
+          tests/test_v03_unit_of_work.py
           tests/test_kir120_integration.py
 
   safety-regression-linux:

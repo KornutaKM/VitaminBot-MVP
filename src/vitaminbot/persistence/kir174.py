@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -45,11 +46,23 @@ _PROFILE_VALUES = {
 class KIR174Store:
     """Current-only sensitive applicability persistence with explicit revision semantics."""
 
-    def __init__(self, database_url: str, *, schema: str = "public") -> None:
+    def __init__(
+        self,
+        database_url: str,
+        *,
+        schema: str = "public",
+        connection: psycopg.Connection[dict[str, Any]] | None = None,
+    ) -> None:
         self._database_url = database_url
         self._schema = schema
+        self._connection = connection
 
-    def _connect(self) -> psycopg.Connection[dict[str, Any]]:
+    def _connect(
+        self,
+    ) -> AbstractContextManager[psycopg.Connection[dict[str, Any]]]:
+        if self._connection is not None:
+            return nullcontext(self._connection)
+
         conn: psycopg.Connection[dict[str, Any]] = psycopg.connect(
             self._database_url,
             row_factory=dict_row,

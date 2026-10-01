@@ -6,10 +6,12 @@ from vitaminbot.persistence.migrations import (
     discover_migrations,
     migrate,
 )
+from vitaminbot.persistence.unit_of_work import PostgresUnitOfWork
 
 __all__ = [
     "Migration",
     "MigrationDriftError",
+    "PostgresUnitOfWork",
     "discover_migrations",
     "migrate",
 ]
