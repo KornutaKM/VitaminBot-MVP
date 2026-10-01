@@ -4,7 +4,7 @@ import asyncio
 from datetime import timedelta
 from typing import Any, cast
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, InputFile, Update
 from telegram.error import BadRequest
 from telegram.ext import (
     Application,
@@ -16,6 +16,7 @@ from telegram.ext import (
     filters,
 )
 
+from vitaminbot.application.account import AccountController
 from vitaminbot.application.applicability import ApplicabilityController
 from vitaminbot.application.intake import IntakeController
 from vitaminbot.application.nutrition import (
@@ -27,11 +28,13 @@ from vitaminbot.application.supplements import Button, Screen, SupplementControl
 from vitaminbot.config import Settings
 from vitaminbot.nutrition.card_content import APPROVED_CARD_CONTENT
 from vitaminbot.nutrition.reference_values import EU_EFSA_REFERENCE_DATASET
+from vitaminbot.persistence.account import AccountStore
 from vitaminbot.persistence.kir116 import KIR116Store
 from vitaminbot.persistence.kir120 import KIR120Store, RoutineTimes
 from vitaminbot.persistence.kir122 import KIR122Store
 from vitaminbot.persistence.kir174 import KIR174Store
 from vitaminbot.presentation.telegram import (
+    render_account_deletion,
     render_adherence,
     render_inventory_edit,
     render_quick_add,
@@ -43,6 +46,11 @@ from vitaminbot.telegram.presentation import (
     project_v02_scientific_shell,
     project_v02_screen,
 )
+
+
+def _account_controller(context: ContextTypes.DEFAULT_TYPE) -> AccountController | None:
+    value = context.application.bot_data.get("account_controller")
+    return None if value is None else cast(AccountController, value)
 
 
 def _controller(context: ContextTypes.DEFAULT_TYPE) -> SupplementController:
@@ -256,7 +264,10 @@ async def _help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "• /supplements — добавки и их подтверждённые данные\n"
             "• /plan — повторяющийся план\n"
             "• /history — история и исправления\n"
+            "• /stats — сводка отметок за 7 и 30 дней\n"
             "• /profile — технические настройки\n"
+            "• /export — выгрузить данные аккаунта в JSON\n"
+            "• /delete_account — удалить аккаунт и связанные данные\n"
             "• /help — эта справка\n\n"
             "Если данных или доказательств недостаточно, VitaminBot покажет это явно. "
             "Отсутствие поддерживаемого правила не означает совместимость или безопасность."
@@ -398,6 +409,33 @@ async def _stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _reply(update, render_adherence(view))
 
 
+async def _export_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    telegram_user_id = _telegram_user_id(update)
+    message = update.effective_message
+    controller = _account_controller(context)
+    if telegram_user_id is None or message is None or controller is None:
+        return
+
+    export = await asyncio.to_thread(controller.export_data, telegram_user_id)
+    if export is None:
+        await _reply(update, Screen(text="Аккаунт не найден. Экспортировать нечего.", rows=()))
+        return
+
+    await message.reply_document(
+        document=InputFile(export.payload, filename=export.filename),
+        caption="Экспорт данных VitaminBot. Файл содержит данные вашего аккаунта на момент выгрузки.",
+    )
+
+
+async def _delete_account(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    telegram_user_id = _telegram_user_id(update)
+    controller = _account_controller(context)
+    if telegram_user_id is None or controller is None:
+        return
+    view = await asyncio.to_thread(controller.begin_deletion, telegram_user_id)
+    await _reply(update, render_account_deletion(view))
+
+
 async def _composition(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     telegram_user_id = _telegram_user_id(update)
     controller = _vertical_controller(context)
@@ -536,6 +574,7 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     nutrient_controller = _nutrient_controller(context)
     schedule_controller = _schedule_controller(context)
     applicability_controller = _applicability_controller(context)
+    account_controller = _account_controller(context)
     scientific = False
     applicability_action = False
     structured_today = False
@@ -543,6 +582,7 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     structured_supplement = False
     structured_inventory = False
     structured_adherence = False
+    structured_account = False
     if query.data == "a":
         quick_add_view = await asyncio.to_thread(
             _controller(context).quick_add_start,
@@ -593,6 +633,14 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         screen = render_inventory_edit(inventory_view)
         structured_inventory = True
+    elif query.data.startswith(("ad:y:", "ad:n:")) and account_controller is not None:
+        account_view = await asyncio.to_thread(
+            account_controller.deletion_callback,
+            telegram_user_id,
+            query.data,
+        )
+        screen = render_account_deletion(account_view)
+        structured_account = True
     elif query.data.startswith("k174") and applicability_controller is not None:
         applicability_action = True
         screen = await asyncio.to_thread(
@@ -659,6 +707,7 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             or structured_supplement
             or structured_inventory
             or structured_adherence
+            or structured_account
         ):
             pass
         elif scientific:
@@ -679,6 +728,7 @@ def build_application(
     nutrient_controller: NutrientReferenceController | None = None,
     vertical_controller: NutritionController | None = None,
     applicability_controller: ApplicabilityController | None = None,
+    account_controller: AccountController | None = None,
 ) -> Application[Any, Any, Any, Any, Any, Any]:
     application = ApplicationBuilder().token(token).concurrent_updates(False).build()
     application.bot_data["kir116_controller"] = controller
@@ -690,6 +740,8 @@ def build_application(
         application.bot_data["kir122_controller"] = vertical_controller
     if applicability_controller is not None:
         application.bot_data["kir174_controller"] = applicability_controller
+    if account_controller is not None:
+        application.bot_data["account_controller"] = account_controller
 
     application.add_handler(CommandHandler("start", _start))
     application.add_handler(CommandHandler("add", _add))
@@ -701,6 +753,9 @@ def build_application(
         application.add_handler(CommandHandler("history", _history))
         application.add_handler(CommandHandler("stats", _stats))
     application.add_handler(CommandHandler("help", _help))
+    if account_controller is not None:
+        application.add_handler(CommandHandler("export", _export_data))
+        application.add_handler(CommandHandler("delete_account", _delete_account))
     if nutrient_controller is not None:
         application.add_handler(CommandHandler("nutrient", _nutrient))
     if vertical_controller is not None:
@@ -722,6 +777,8 @@ def main() -> None:
 
     kir116_store = KIR116Store(settings.database_url)
     kir116_controller = SupplementController(kir116_store)
+    account_store = AccountStore(settings.database_url)
+    account_controller = AccountController(account_store)
 
     routine_times = RoutineTimes.from_strings(
         settings.reminder_morning_time,
@@ -755,6 +812,7 @@ def main() -> None:
         base_store=kir116_store,
         store=kir122_store,
         applicability_controller=applicability_controller,
+        account_controller=account_controller,
     )
     application = build_application(
         settings.telegram_bot_token,
