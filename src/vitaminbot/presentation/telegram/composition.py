@@ -24,7 +24,7 @@ def render_composition(view: CompositionView) -> Screen:
         )
 
     if view.step is CompositionStep.LIST:
-        rows: list[tuple[Button, ...]] = []
+        list_rows: list[tuple[Button, ...]] = []
         lines = [
             "Состав",
             "",
@@ -39,7 +39,7 @@ def render_composition(view: CompositionView) -> Screen:
             if supplement.serving_basis_type != "per_label_portion":
                 status += " · нужна порция этикетки"
             lines.append(f"• {supplement.name} — {status}")
-            rows.append(
+            list_rows.append(
                 (
                     Button(
                         f"Состав · {supplement.name[:26]}",
@@ -47,8 +47,8 @@ def render_composition(view: CompositionView) -> Screen:
                     ),
                 )
             )
-        rows.append((Button("Итоги", "k122tot"),))
-        return Screen(text="\n".join(lines), rows=tuple(rows))
+        list_rows.append((Button("Итоги", "k122tot"),))
+        return Screen(text="\n".join(lines), rows=tuple(list_rows))
 
     if view.step is CompositionStep.SERVING_QUANTITY:
         unit = _unit_genitive(view.unit_label)
@@ -138,13 +138,13 @@ def render_composition(view: CompositionView) -> Screen:
         amount = ""
         if view.value is not None and view.unit is not None:
             amount = f": {_decimal(view.value)} {_mass_unit(view.unit)}"
-        rows: list[tuple[Button, ...]] = [
+        complete_rows: list[tuple[Button, ...]] = [
             (Button("Добавить ещё строку", "k122comp"),),
             (Button("Итоги", "k122tot"), Button("Сегодня", "k120today")),
         ]
         manual_token = _manual_token(view.instance_id)
         if manual_token is not None and view.supplement_revision is not None:
-            rows.insert(
+            complete_rows.insert(
                 1,
                 (
                     Button(
@@ -160,7 +160,7 @@ def render_composition(view: CompositionView) -> Screen:
                 "Это сохранённый факт с этикетки, а не вывод о безопасности "
                 "и не рекомендация по дозе."
             ),
-            rows=tuple(rows),
+            rows=tuple(complete_rows),
         )
 
     if view.step is CompositionStep.CANCELLED:
