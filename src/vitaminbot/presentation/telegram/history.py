@@ -99,8 +99,7 @@ def render_history_action_result(result: HistoryActionResult) -> Screen:
     if result.status is HistoryActionStatus.STALE:
         return Screen(
             text=(
-                "Эта запись уже изменилась или была исправлена. "
-                "Повторное исправление не записано."
+                "Эта запись уже изменилась или была исправлена. Повторное исправление не записано."
             ),
             rows=((Button("Открыть историю", "k120h"),),),
         )
