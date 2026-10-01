@@ -647,3 +647,98 @@ def test_quick_add_uses_consumption_unit_basis_and_saves_plan_once(
         assert basis[1] == Decimal("1")
         assert "tracked unit" in basis[2]
         assert conn.execute("SELECT count(*) FROM intake_plan_heads").fetchone() == (1,)
+
+
+def test_inventory_edit_is_durable_idempotent_and_does_not_change_supplement_revision(
+    kir116_controller: tuple[KIR116Controller, KIR116Store, str, str],
+) -> None:
+    controller, store, database_url, schema = kir116_controller
+    telegram_user_id = 101021
+
+    controller.quick_add_start(telegram_user_id, action_key="inventory:add:start")
+    unit = controller.quick_add_text(
+        telegram_user_id,
+        "Magnesium Citrate",
+        action_key="inventory:add:name",
+    )
+    assert unit.draft_id is not None
+    assert unit.revision is not None
+    controller.quick_add_callback(
+        telegram_user_id,
+        f"qau:{unit.draft_id}:{unit.revision}:c",
+        action_key="inventory:add:unit",
+    )
+    bucket = controller.quick_add_callback(
+        telegram_user_id,
+        "qaq:2",
+        action_key="inventory:add:quantity",
+    )
+    assert bucket.revision is not None
+    controller.quick_add_callback(
+        telegram_user_id,
+        f"qab:e:{bucket.revision}",
+        action_key="inventory:add:bucket",
+    )
+
+    user_id = store.ensure_user(telegram_user_id)
+    record = store.list_supplements(user_id)[0]
+    token = record.instance_id.removeprefix("instance:manual:")
+
+    prompt = controller.inventory_edit_start(
+        telegram_user_id,
+        f"iv:{token}:{record.revision}",
+        action_key="inventory:begin:one",
+    )
+    assert prompt.step.value == "quantity"
+
+    saved = controller.inventory_edit_text(
+        telegram_user_id,
+        "36",
+        action_key="inventory:set:36",
+    )
+    assert saved.step.value == "complete"
+
+    after = store.supplement(user_id, record.instance_id)
+    assert after.revision == record.revision
+    assert after.inventory_remaining_units == Decimal("36")
+    assert after.inventory_unit_id == after.unit_id
+    assert after.inventory_revision == 1
+    assert store.inventory_edit_session(user_id) is None
+
+    # Duplicate Telegram delivery of the same message is idempotent.
+    duplicate = store.save_inventory_quantity(
+        user_id,
+        "inventory:set:36",
+        Decimal("999"),
+    )
+    assert duplicate.inventory_remaining_units == Decimal("36")
+    assert duplicate.inventory_revision == 1
+
+    controller.inventory_edit_start(
+        telegram_user_id,
+        f"iv:{token}:{record.revision}",
+        action_key="inventory:begin:two",
+    )
+    updated = controller.inventory_edit_text(
+        telegram_user_id,
+        "20",
+        action_key="inventory:set:20",
+    )
+    assert updated.step.value == "complete"
+
+    final = store.supplement(user_id, record.instance_id)
+    assert final.inventory_remaining_units == Decimal("20")
+    assert final.inventory_revision == 2
+    assert final.revision == record.revision
+
+    with psycopg.connect(database_url) as conn:
+        conn.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(schema)))
+        row = conn.execute(
+            """
+            SELECT remaining_units, revision, consumption_unit_id
+            FROM supplement_inventory
+            WHERE tracked_instance_id = %s
+            """,
+            (record.instance_id,),
+        ).fetchone()
+        assert row == (Decimal("20"), 2, record.unit_id)

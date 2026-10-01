@@ -68,9 +68,13 @@ class SupplementRecord:
     plan_quantity: Decimal | None
     plan_bucket: str | None
     plan_unit_label: str | None
+    plan_unit_id: str | None
     plan_revision: int | None
     serving_basis_type: str = "per_label_portion"
     lifecycle_status: str = "active"
+    inventory_remaining_units: Decimal | None = None
+    inventory_unit_id: str | None = None
+    inventory_revision: int | None = None
 
 
 class KIR116Store:
@@ -170,9 +174,13 @@ class KIR116Store:
             plan_quantity=row["plan_quantity"],
             plan_bucket=row["plan_bucket"],
             plan_unit_label=row["plan_unit_label"],
+            plan_unit_id=row["plan_unit_id"],
             plan_revision=row["plan_revision"],
             serving_basis_type=row["serving_basis_type"],
             lifecycle_status=row["lifecycle_status"],
+            inventory_remaining_units=row["inventory_remaining_units"],
+            inventory_unit_id=row["inventory_unit_id"],
+            inventory_revision=row["inventory_revision"],
         )
 
     @staticmethod
@@ -1514,6 +1522,122 @@ class KIR116Store:
             self._complete_action(conn, user_id, action_key, instance_id)
             return self._supplement_by_id(conn, user_id, instance_id)
 
+    def inventory_edit_session(self, user_id: UUID) -> tuple[str, int] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT tracked_instance_id, expected_supplement_revision
+                FROM inventory_edit_sessions
+                WHERE user_id = %s
+                """,
+                (user_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return str(row["tracked_instance_id"]), int(row["expected_supplement_revision"])
+
+    def begin_inventory_edit(
+        self,
+        user_id: UUID,
+        action_key: str,
+        instance_id: str,
+        expected_revision: int,
+    ) -> SupplementRecord:
+        with self._connect() as conn:
+            claimed, _ = self._claim_action(conn, user_id, action_key, "inventory_edit_begin")
+            supplement = self._locked_supplement(conn, user_id, instance_id)
+            if supplement.revision != expected_revision:
+                raise StaleAction("supplement changed before inventory editing started")
+            if claimed:
+                conn.execute(
+                    """
+                    INSERT INTO inventory_edit_sessions (
+                        user_id,
+                        tracked_instance_id,
+                        expected_supplement_revision
+                    )
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (user_id) DO UPDATE
+                    SET tracked_instance_id = EXCLUDED.tracked_instance_id,
+                        expected_supplement_revision = EXCLUDED.expected_supplement_revision,
+                        revision = inventory_edit_sessions.revision + 1,
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (user_id, instance_id, expected_revision),
+                )
+                self._complete_action(conn, user_id, action_key, instance_id)
+            return supplement
+
+    def save_inventory_quantity(
+        self,
+        user_id: UUID,
+        action_key: str,
+        quantity: Decimal,
+    ) -> SupplementRecord:
+        if not quantity.is_finite() or quantity < 0:
+            raise ValueError("inventory quantity must be a nonnegative finite number")
+        with self._connect() as conn:
+            claimed, result_ref = self._claim_action(conn, user_id, action_key, "inventory_set")
+            if not claimed and result_ref is not None:
+                return self._supplement_by_id(conn, user_id, result_ref)
+
+            session = conn.execute(
+                """
+                SELECT tracked_instance_id, expected_supplement_revision
+                FROM inventory_edit_sessions
+                WHERE user_id = %s
+                FOR UPDATE
+                """,
+                (user_id,),
+            ).fetchone()
+            if session is None:
+                raise InvalidTransition("inventory edit session is not active")
+
+            supplement = self._locked_supplement(
+                conn,
+                user_id,
+                str(session["tracked_instance_id"]),
+            )
+            if supplement.revision != int(session["expected_supplement_revision"]):
+                raise StaleAction("supplement changed before inventory was saved")
+
+            conn.execute(
+                """
+                INSERT INTO supplement_inventory (
+                    tracked_instance_id,
+                    formulation_id,
+                    consumption_unit_id,
+                    remaining_units
+                )
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (tracked_instance_id) DO UPDATE
+                SET formulation_id = EXCLUDED.formulation_id,
+                    consumption_unit_id = EXCLUDED.consumption_unit_id,
+                    remaining_units = EXCLUDED.remaining_units,
+                    revision = supplement_inventory.revision + 1,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    supplement.instance_id,
+                    supplement.formulation_id,
+                    supplement.unit_id,
+                    quantity,
+                ),
+            )
+            conn.execute(
+                "DELETE FROM inventory_edit_sessions WHERE user_id = %s",
+                (user_id,),
+            )
+            self._complete_action(conn, user_id, action_key, supplement.instance_id)
+            return self._supplement_by_id(conn, user_id, supplement.instance_id)
+
+    def cancel_inventory_edit(self, user_id: UUID) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM inventory_edit_sessions WHERE user_id = %s",
+                (user_id,),
+            )
+
     def remove_supplement(
         self,
         user_id: UUID,
@@ -1793,7 +1917,11 @@ class KIR116Store:
                 planned.consumption_units AS plan_quantity,
                 planned.schedule_label AS plan_bucket,
                 plan_unit.label_name AS plan_unit_label,
-                head.revision AS plan_revision
+                planned.consumption_unit_id AS plan_unit_id,
+                head.revision AS plan_revision,
+                inventory.remaining_units AS inventory_remaining_units,
+                inventory.consumption_unit_id AS inventory_unit_id,
+                inventory.revision AS inventory_revision
             FROM user_supplements AS us
             JOIN consumption_units AS unit
               ON unit.formulation_id = us.formulation_id
@@ -1810,6 +1938,8 @@ class KIR116Store:
             LEFT JOIN consumption_units AS plan_unit
               ON plan_unit.formulation_id = planned.formulation_id
              AND plan_unit.unit_id = planned.consumption_unit_id
+            LEFT JOIN supplement_inventory AS inventory
+              ON inventory.tracked_instance_id = us.instance_id
             WHERE us.user_id = %s
         """
         return query

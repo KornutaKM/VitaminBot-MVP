@@ -8,6 +8,7 @@ from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from vitaminbot.application.views.add import QuickAddStep, QuickAddView
+from vitaminbot.application.views.inventory import InventoryEditStep, InventoryEditView
 from vitaminbot.application.views.supplement import (
     SupplementDetailStatus,
     SupplementDetailView,
@@ -184,14 +185,99 @@ class KIR116Controller:
             instance_id=record.instance_id,
             revision=record.revision,
             name=record.name,
+            unit_id=record.unit_id,
             unit_label=record.unit_label,
             serving_basis_type=record.serving_basis_type,
             units_per_serving=record.units_per_serving,
             plan_quantity=record.plan_quantity,
             plan_bucket=record.plan_bucket,
             plan_unit_label=record.plan_unit_label,
+            plan_unit_id=record.plan_unit_id,
             lifecycle_status=record.lifecycle_status,
+            inventory_remaining_units=record.inventory_remaining_units,
+            inventory_unit_id=record.inventory_unit_id,
+            inventory_revision=record.inventory_revision,
         )
+
+    def inventory_edit_pending(self, telegram_user_id: int) -> bool:
+        user_id = self._store.ensure_user(telegram_user_id)
+        return self._store.inventory_edit_session(user_id) is not None
+
+    def inventory_edit_start(
+        self,
+        telegram_user_id: int,
+        data: str,
+        *,
+        action_key: str,
+    ) -> InventoryEditView:
+        parts = data.split(":")
+        if len(parts) != 3 or parts[0] != "iv":
+            return InventoryEditView(step=InventoryEditStep.INVALID)
+        user_id = self._store.ensure_user(telegram_user_id)
+        self._store.cancel_pending(user_id)
+        try:
+            instance_id = self._instance_id(parts[1])
+            expected_revision = int(parts[2])
+            record = self._store.begin_inventory_edit(
+                user_id,
+                action_key,
+                instance_id,
+                expected_revision,
+            )
+        except (ValueError, InvalidTransition, StaleAction, RecordNotFound):
+            return InventoryEditView(step=InventoryEditStep.STALE)
+        return InventoryEditView(
+            step=InventoryEditStep.QUANTITY,
+            name=record.name,
+            unit_label=record.unit_label,
+            supplement_instance_id=record.instance_id,
+            supplement_revision=record.revision,
+        )
+
+    def inventory_edit_text(
+        self,
+        telegram_user_id: int,
+        value: str,
+        *,
+        action_key: str,
+    ) -> InventoryEditView:
+        user_id = self._store.ensure_user(telegram_user_id)
+        session = self._store.inventory_edit_session(user_id)
+        if session is None:
+            return InventoryEditView(step=InventoryEditStep.INVALID)
+        try:
+            quantity = self._parse_nonnegative_decimal(value)
+            record = self._store.save_inventory_quantity(
+                user_id,
+                action_key,
+                quantity,
+            )
+        except ValueError:
+            try:
+                record = self._store.supplement(user_id, session[0])
+            except RecordNotFound:
+                return InventoryEditView(step=InventoryEditStep.STALE)
+            return InventoryEditView(
+                step=InventoryEditStep.QUANTITY,
+                name=record.name,
+                unit_label=record.unit_label,
+                supplement_instance_id=record.instance_id,
+                supplement_revision=record.revision,
+            )
+        except (InvalidTransition, StaleAction, RecordNotFound):
+            return InventoryEditView(step=InventoryEditStep.STALE)
+        return InventoryEditView(
+            step=InventoryEditStep.COMPLETE,
+            name=record.name,
+            unit_label=record.unit_label,
+            supplement_instance_id=record.instance_id,
+            supplement_revision=record.revision,
+        )
+
+    def inventory_edit_cancel(self, telegram_user_id: int) -> InventoryEditView:
+        user_id = self._store.ensure_user(telegram_user_id)
+        self._store.cancel_inventory_edit(user_id)
+        return InventoryEditView(step=InventoryEditStep.CANCELLED)
 
     def quick_add_pending(self, telegram_user_id: int) -> bool:
         user_id = self._store.ensure_user(telegram_user_id)
@@ -209,6 +295,7 @@ class KIR116Controller:
         action_key: str,
     ) -> QuickAddView:
         user_id = self._store.ensure_user(telegram_user_id)
+        self._store.cancel_inventory_edit(user_id)
         try:
             draft = self._store.begin_quick(user_id, action_key)
         except (InvalidTransition, StaleAction, RecordNotFound):
@@ -1045,6 +1132,19 @@ class KIR116Controller:
             raise ValueError("Enter a valid positive decimal number.") from exc
         if not quantity.is_finite() or quantity <= 0:
             raise ValueError("Quantity must be greater than zero.")
+        return quantity
+
+    @staticmethod
+    def _parse_nonnegative_decimal(value: str) -> Decimal:
+        normalized = value.strip()
+        if not _DECIMAL_PATTERN.fullmatch(normalized):
+            raise ValueError("Enter a nonnegative decimal number.")
+        try:
+            quantity = Decimal(normalized.replace(",", "."))
+        except InvalidOperation as exc:
+            raise ValueError("Enter a valid nonnegative decimal number.") from exc
+        if not quantity.is_finite() or quantity < 0:
+            raise ValueError("Inventory quantity must be zero or greater.")
         return quantity
 
     @staticmethod

@@ -6,6 +6,7 @@ migrated out of ticket-oriented modules.
 
 from vitaminbot.application.kir116 import Button, KIR116Controller, Screen
 from vitaminbot.application.views.add import QuickAddStep, QuickAddView
+from vitaminbot.application.views.inventory import InventoryEditStep, InventoryEditView
 from vitaminbot.application.views.supplement import (
     SupplementDetailStatus,
     SupplementDetailView,
@@ -14,6 +15,8 @@ from vitaminbot.application.views.supplement import (
 SupplementController = KIR116Controller
 
 __all__ = [
+    "InventoryEditStep",
+    "InventoryEditView",
     "Button",
     "QuickAddStep",
     "QuickAddView",
