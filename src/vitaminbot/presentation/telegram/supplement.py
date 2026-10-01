@@ -80,11 +80,7 @@ def render_supplement_detail(view: SupplementDetailView) -> Screen:
             (Button("Состав и итоги", "k122comp"),),
             (
                 Button(
-                    (
-                        "Обновить запас"
-                        if view.inventory_remaining_units is not None
-                        else "Указать запас"
-                    ),
+                    "Обновить запас" if view.inventory_remaining_units is not None else "Указать запас",
                     f"iv:{token}:{view.revision}",
                 ),
             ),
@@ -127,6 +123,8 @@ def _inventory_line(view: SupplementDetailView) -> str:
     if view.inventory_unit_id != view.unit_id:
         # Never reinterpret a balance across product-unit revisions.
         return "Нужно уточнить после смены единицы учёта."
+    if view.inventory_needs_reconciliation:
+        return f"{_decimal(remaining)} {_unit_label(view.unit_label, remaining)} · нужно уточнить"
 
     unit_text = _unit_label(view.unit_label, remaining)
     line = f"{_decimal(remaining)} {unit_text}"
