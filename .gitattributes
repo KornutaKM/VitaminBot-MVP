@@ -1,0 +1,4 @@
+# Frozen recognition benchmark fixtures are byte-hashed by the manifest.
+# Keep repository bytes identical across Linux and Windows checkouts.
+tests/fixtures/recognition_benchmark/**/*.json text eol=lf
+tests/fixtures/recognition_benchmark/**/*.b64 text eol=lf
