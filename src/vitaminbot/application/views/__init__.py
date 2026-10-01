@@ -1,6 +1,8 @@
 """Structured application-layer view models."""
 
 from vitaminbot.application.views.today import (
+    TodayActionResult,
+    TodayActionStatus,
     TodayOccurrenceState,
     TodayOccurrenceView,
     TodayStatus,
@@ -9,6 +11,8 @@ from vitaminbot.application.views.today import (
 )
 
 __all__ = [
+    "TodayActionResult",
+    "TodayActionStatus",
     "TodayOccurrenceState",
     "TodayOccurrenceView",
     "TodayStatus",

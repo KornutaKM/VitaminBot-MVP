@@ -15,6 +15,12 @@ class TodayStatus(StrEnum):
     INVALID_SCHEDULE = "invalid_schedule"
 
 
+class TodayActionStatus(StrEnum):
+    APPLIED = "applied"
+    STALE = "stale"
+    INVALID = "invalid"
+
+
 class TodayOccurrenceState(StrEnum):
     PENDING = "pending"
     TAKEN = "taken"
@@ -44,6 +50,12 @@ class TodayView:
     status: TodayStatus
     local_date: date | None = None
     occurrences: tuple[TodayOccurrenceView, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class TodayActionResult:
+    status: TodayActionStatus
+    view: TodayView | None = None
 
 
 def build_today_view(occurrences: tuple[OccurrenceRecord, ...]) -> TodayView:

@@ -3,7 +3,13 @@ from __future__ import annotations
 from datetime import time
 from decimal import Decimal
 
-from vitaminbot.application.intake import TodayOccurrenceState, TodayStatus, TodayView
+from vitaminbot.application.intake import (
+    TodayActionResult,
+    TodayActionStatus,
+    TodayOccurrenceState,
+    TodayStatus,
+    TodayView,
+)
 from vitaminbot.application.supplements import Button, Screen
 
 _WEEKDAYS_RU = (
@@ -125,6 +131,26 @@ def render_today(view: TodayView) -> Screen:
         lines.pop()
     rows.append((Button("План", "k120p"), Button("История", "k120h")))
     return Screen(text="\n".join(lines), rows=tuple(rows))
+
+
+def render_today_action_result(result: TodayActionResult) -> Screen:
+    if result.status is TodayActionStatus.APPLIED and result.view is not None:
+        return render_today(result.view)
+    if result.status is TodayActionStatus.STALE:
+        return Screen(
+            text=(
+                "Действие уже устарело или было обработано ранее. "
+                "Повторная отметка о приёме не записана."
+            ),
+            rows=(
+                (Button("Сегодня", "k120today"),),
+                (Button("История", "k120h"),),
+            ),
+        )
+    return Screen(
+        text="Не удалось распознать действие. План и история не изменены.",
+        rows=((Button("Сегодня", "k120today"),),),
+    )
 
 
 def _header(view: TodayView) -> str:

@@ -4,12 +4,14 @@ from decimal import Decimal
 import pytest
 
 from vitaminbot.application.intake import (
+    TodayActionResult,
+    TodayActionStatus,
     TodayOccurrenceState,
     TodayOccurrenceView,
     TodayStatus,
     TodayView,
 )
-from vitaminbot.presentation.telegram import render_today
+from vitaminbot.presentation.telegram import render_today, render_today_action_result
 
 
 def _occurrence(
@@ -106,3 +108,24 @@ def test_render_today_empty_day_keeps_navigation() -> None:
     assert "На сегодня ничего не запланировано." in screen.text
     callbacks = [button.callback_data for row in screen.rows for button in row]
     assert callbacks == ["k120p", "k120h"]
+
+
+def test_render_today_action_result_keeps_stale_action_explicit() -> None:
+    stale = render_today_action_result(TodayActionResult(status=TodayActionStatus.STALE))
+    assert "Повторная отметка о приёме не записана." in stale.text
+    callbacks = [button.callback_data for row in stale.rows for button in row]
+    assert callbacks == ["k120today", "k120h"]
+
+
+def test_render_today_action_result_renders_applied_view() -> None:
+    view = TodayView(
+        status=TodayStatus.READY,
+        local_date=date(2026, 10, 1),
+    )
+    screen = render_today_action_result(
+        TodayActionResult(
+            status=TodayActionStatus.APPLIED,
+            view=view,
+        )
+    )
+    assert "На сегодня ничего не запланировано." in screen.text

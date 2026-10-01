@@ -5,7 +5,13 @@ from datetime import UTC, datetime, time, timedelta
 from decimal import Decimal
 
 from vitaminbot.application.kir116 import Button, Screen
-from vitaminbot.application.views.today import TodayStatus, TodayView, build_today_view
+from vitaminbot.application.views.today import (
+    TodayActionResult,
+    TodayActionStatus,
+    TodayStatus,
+    TodayView,
+    build_today_view,
+)
 from vitaminbot.persistence.kir120 import (
     AmbiguousLocalTime,
     InvalidOccurrenceState,
@@ -106,6 +112,61 @@ class KIR120Controller:
         except InvalidScheduleTime:
             return TodayView(status=TodayStatus.INVALID_SCHEDULE)
         return build_today_view(occurrences)
+
+    def apply_today_action_view(
+        self,
+        telegram_user_id: int,
+        data: str,
+        *,
+        action_key: str,
+        now: datetime | None = None,
+    ) -> TodayActionResult:
+        """Apply a Today mutation and return a structured post-action projection."""
+        user_id = self._store.ensure_user(telegram_user_id)
+        current = _utc_now(now)
+        parts = data.split(":")
+        if len(parts) != 3 or parts[0] not in {"k120t", "k120s", "k120l"}:
+            return TodayActionResult(status=TodayActionStatus.INVALID)
+
+        occurrence_id = parts[1]
+        try:
+            expected_revision = int(parts[2])
+        except ValueError:
+            return TodayActionResult(status=TodayActionStatus.INVALID)
+
+        try:
+            if parts[0] == "k120t":
+                self._store.take(
+                    user_id,
+                    occurrence_id,
+                    expected_revision,
+                    action_key,
+                    current,
+                )
+            elif parts[0] == "k120s":
+                self._store.skip(
+                    user_id,
+                    occurrence_id,
+                    expected_revision,
+                    action_key,
+                    current,
+                )
+            else:
+                self._store.later(
+                    user_id,
+                    occurrence_id,
+                    expected_revision,
+                    action_key,
+                    current,
+                    current + self._later_delay,
+                )
+        except (StaleOccurrence, InvalidOccurrenceState, ScheduleRecordNotFound):
+            return TodayActionResult(status=TodayActionStatus.STALE)
+
+        return TodayActionResult(
+            status=TodayActionStatus.APPLIED,
+            view=self.today_view(telegram_user_id, now=current),
+        )
 
     def plan(self, telegram_user_id: int, *, prefix: str = "") -> Screen:
         user_id = self._store.ensure_user(telegram_user_id)
