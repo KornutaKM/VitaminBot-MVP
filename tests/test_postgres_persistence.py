@@ -84,6 +84,7 @@ def test_migrations_are_reproducible_and_idempotent(
         ("0008", "supplement_inventory"),
         ("0009", "inventory_intake_ledger"),
         ("0010", "account_data_controls"),
+        ("0011", "structured_composition_sessions"),
     ]
 
 
