@@ -29,8 +29,8 @@ from vitaminbot.config import Settings
 from vitaminbot.nutrition.card_content import APPROVED_CARD_CONTENT
 from vitaminbot.nutrition.reference_values import EU_EFSA_REFERENCE_DATASET
 from vitaminbot.observability import (
-    MetricsSink,
     NULL_METRICS,
+    MetricsSink,
     build_logging_metrics_sink,
 )
 from vitaminbot.persistence.account import AccountStore
