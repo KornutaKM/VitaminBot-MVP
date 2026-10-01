@@ -8,12 +8,6 @@ from uuid import UUID
 
 from vitaminbot.application.kir116 import Button, Screen
 from vitaminbot.application.kir174 import BoundApplicabilityContext, KIR174Controller
-from vitaminbot.application.views.totals import (
-    NutrientContributorView,
-    NutrientTotalsView,
-    RegimenTotalsStatus,
-    RegimenTotalsView,
-)
 from vitaminbot.application.safety_envelope import (
     SafetyComparisonContext,
     SafetyContributor,
@@ -23,6 +17,12 @@ from vitaminbot.application.safety_envelope import (
     SafetyProvenance,
     SafetyStatus,
     render_safety_envelopes,
+)
+from vitaminbot.application.views.totals import (
+    NutrientContributorView,
+    NutrientTotalsView,
+    RegimenTotalsStatus,
+    RegimenTotalsView,
 )
 from vitaminbot.domain import (
     AmountBasis,
