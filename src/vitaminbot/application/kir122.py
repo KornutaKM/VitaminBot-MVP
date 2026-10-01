@@ -18,6 +18,12 @@ from vitaminbot.application.safety_envelope import (
     SafetyStatus,
     render_safety_envelopes,
 )
+from vitaminbot.application.views.composition import (
+    CompositionNutrientOption,
+    CompositionStep,
+    CompositionSupplementView,
+    CompositionView,
+)
 from vitaminbot.application.views.totals import (
     NutrientContributorView,
     NutrientTotalsView,
@@ -72,7 +78,13 @@ from vitaminbot.nutrition import (
     normalize_per_consumption_unit,
     normalize_planned_daily_amount,
 )
-from vitaminbot.persistence.kir116 import KIR116Store, SupplementRecord
+from vitaminbot.persistence.kir116 import (
+    InvalidTransition as SupplementInvalidTransition,
+    KIR116Store,
+    RecordNotFound,
+    StaleAction,
+    SupplementRecord,
+)
 from vitaminbot.persistence.kir122 import (
     CompositionSession,
     DuplicateCompositionFact,
@@ -84,6 +96,7 @@ from vitaminbot.persistence.kir122 import (
     VerticalSnapshot,
 )
 
+_COUNT_PATTERN = re.compile(r"^\s*(\d{1,12}(?:[.,]\d{1,6})?)\s*$")
 _AMOUNT_PATTERN = re.compile(
     r"^\s*(\d{1,12}(?:[.,]\d{1,6})?)\s*(g|mg|ug|г|мг|мкг|µg|μg)\s*$",
     re.IGNORECASE,
@@ -138,6 +151,164 @@ class KIR122Controller:
         self._base_store = base_store
         self._store = store
         self._applicability_controller = applicability_controller
+
+    def composition_view(self, telegram_user_id: int) -> CompositionView:
+        user_id = self._base_store.ensure_user(telegram_user_id)
+        records = self._base_store.list_supplements(user_id)
+        if not records:
+            return CompositionView(step=CompositionStep.EMPTY)
+        return CompositionView(
+            step=CompositionStep.LIST,
+            supplements=tuple(
+                CompositionSupplementView(
+                    instance_id=record.instance_id,
+                    token=self._token(record.instance_id),
+                    revision=record.revision,
+                    name=record.name,
+                    unit_label=record.unit_label,
+                    serving_basis_type=record.serving_basis_type,
+                    confirmed_count=len(
+                        self._store.manual_substance_keys(user_id, record.instance_id)
+                    ),
+                )
+                for record in records
+            ),
+        )
+
+    def composition_text_view(
+        self,
+        telegram_user_id: int,
+        text: str,
+        *,
+        action_key: str,
+    ) -> CompositionView:
+        user_id = self._base_store.ensure_user(telegram_user_id)
+        base_session = self._base_store.get_session(user_id)
+        if base_session is not None and base_session.state == "composition_serving_quantity":
+            if base_session.target_instance_id is None:
+                return CompositionView(step=CompositionStep.STALE)
+            try:
+                record = self._base_store.supplement(user_id, base_session.target_instance_id)
+            except RecordNotFound:
+                return CompositionView(step=CompositionStep.STALE)
+            quantity = self._parse_positive_count(text)
+            if quantity is None:
+                return self._serving_quantity_view(record, input_error=True)
+            try:
+                updated = self._base_store.save_composition_serving_quantity(
+                    user_id,
+                    action_key,
+                    quantity,
+                )
+            except (ValueError, SupplementInvalidTransition, StaleAction, RecordNotFound):
+                return CompositionView(step=CompositionStep.STALE)
+            return self._composition_nutrient_view(user_id, updated)
+
+        session = self._store.session(user_id)
+        if session is None or session.state != "amount_input":
+            return CompositionView(step=CompositionStep.INVALID)
+
+        parsed = self._parse_amount(text)
+        if parsed is None:
+            return self._amount_input_view(session, input_error=True)
+        value, unit = parsed
+        try:
+            updated = self._store.set_amount(
+                user_id,
+                action_key,
+                value=value,
+                unit=unit,
+            )
+        except (InvalidCompositionState, StaleCompositionAction):
+            return CompositionView(step=CompositionStep.STALE)
+        return self._review_view(updated)
+
+    def apply_composition_action_view(
+        self,
+        telegram_user_id: int,
+        data: str,
+        *,
+        action_key: str,
+    ) -> CompositionView:
+        user_id = self._base_store.ensure_user(telegram_user_id)
+        parts = data.split(":")
+        action = parts[0]
+        try:
+            if action == "k122comp":
+                return self.composition_view(telegram_user_id)
+            if action == "k122cancel":
+                self._store.cancel(user_id)
+                self._base_store.cancel_pending(user_id)
+                return CompositionView(step=CompositionStep.CANCELLED)
+            if action == "k122c":
+                if len(parts) != 3:
+                    return CompositionView(step=CompositionStep.INVALID)
+                record = self._record_from_token(user_id, parts[1], int(parts[2]))
+                if record.serving_basis_type != "per_label_portion":
+                    self._base_store.begin_composition_serving_quantity(
+                        user_id,
+                        action_key,
+                        record.instance_id,
+                        record.revision,
+                    )
+                    return self._serving_quantity_view(record)
+                return self._composition_nutrient_view(user_id, record)
+            if action == "k122n":
+                if len(parts) != 4:
+                    return CompositionView(step=CompositionStep.INVALID)
+                record = self._record_from_token(user_id, parts[1], int(parts[2]))
+                if record.serving_basis_type != "per_label_portion":
+                    return CompositionView(step=CompositionStep.STALE)
+                substance_key = parts[3]
+                subject_id = self._subject_for_substance(substance_key)
+                display_name = _RU_SUBSTANCE_NAMES.get(substance_key)
+                if subject_id is None or display_name is None:
+                    return CompositionView(step=CompositionStep.INVALID)
+                session = self._store.begin_amount(
+                    user_id,
+                    action_key,
+                    tracked_instance_id=record.instance_id,
+                    expected_supplement_revision=record.revision,
+                    substance_key=substance_key,
+                    analyte_id=subject_id,
+                    display_name=display_name,
+                )
+                return self._amount_input_view(session)
+            if action == "k122ok":
+                if len(parts) != 2:
+                    return CompositionView(step=CompositionStep.INVALID)
+                amount = self._store.confirm_amount(
+                    user_id,
+                    action_key,
+                    expected_session_revision=int(parts[1]),
+                )
+                supplement = self._base_store.supplement(user_id, amount.tracked_instance_id)
+                return CompositionView(
+                    step=CompositionStep.COMPLETE,
+                    instance_id=supplement.instance_id,
+                    supplement_token=self._token(supplement.instance_id),
+                    supplement_revision=supplement.revision,
+                    name=supplement.name,
+                    unit_label=supplement.unit_label,
+                    substance_key=amount.substance_key,
+                    nutrient_name=self._subject_name(amount.analyte_id),
+                    value=amount.value,
+                    unit=amount.unit,
+                )
+        except (IndexError, ValueError):
+            return CompositionView(step=CompositionStep.INVALID)
+        except DuplicateCompositionFact:
+            return CompositionView(step=CompositionStep.DUPLICATE)
+        except (
+            InvalidCompositionState,
+            StaleCompositionAction,
+            SupplementInvalidTransition,
+            StaleAction,
+            RecordNotFound,
+        ):
+            return CompositionView(step=CompositionStep.STALE)
+
+        return CompositionView(step=CompositionStep.INVALID)
 
     def composition(self, telegram_user_id: int) -> Screen:
         user_id = self._base_store.ensure_user(telegram_user_id)
