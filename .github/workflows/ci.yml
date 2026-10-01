@@ -74,6 +74,13 @@ jobs:
       - name: Pytest
         run: pytest
 
+      - name: Docker Compose config
+        env:
+          POSTGRES_PASSWORD: vitaminbot-ci
+          TELEGRAM_BOT_TOKEN: 123456:ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890
+          DATABASE_URL_DOCKER: postgresql://vitaminbot:vitaminbot-ci@postgres:5432/vitaminbot
+        run: docker compose config --quiet
+
       - name: Docker build
         run: docker build --tag vitaminbot-ci .
 
