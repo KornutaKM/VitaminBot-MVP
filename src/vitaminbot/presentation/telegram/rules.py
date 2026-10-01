@@ -24,9 +24,7 @@ _WARNING_TEXT = {
     RuleWarning.NULL_GAP_MUST_REMAIN_NULL: (
         "Точный интервал не установлен и не должен быть придуман."
     ),
-    RuleWarning.NO_PERSONALIZED_DOSE: (
-        "Правило не создаёт и не изменяет персональную дозу."
-    ),
+    RuleWarning.NO_PERSONALIZED_DOSE: ("Правило не создаёт и не изменяет персональную дозу."),
     RuleWarning.FIXED_COMBINATION_NOT_SPLITTABLE: (
         "Неделимая комбинация не должна автоматически разноситься по компонентам."
     ),
