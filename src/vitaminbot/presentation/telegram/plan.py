@@ -107,8 +107,7 @@ def render_plan_action_result(result: PlanActionResult) -> Screen:
     if result.status is PlanActionStatus.STALE:
         return Screen(
             text=(
-                "Этот план уже изменился. Старое действие не применено. "
-                "Откройте актуальный план."
+                "Этот план уже изменился. Старое действие не применено. Откройте актуальный план."
             ),
             rows=((Button("Открыть план", "k120p"),),),
         )
