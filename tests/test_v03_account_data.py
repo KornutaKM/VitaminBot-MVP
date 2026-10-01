@@ -121,7 +121,11 @@ def test_delete_account_cascades_user_data_and_purges_manual_provenance(
             "SELECT count(*) FROM user_supplements WHERE instance_id LIKE 'instance:manual:%'"
         ).fetchone() == (0,)
         assert conn.execute(
-            "SELECT count(*) FROM product_formulations WHERE formulation_id LIKE 'formulation:manual:%'"
+            """
+            SELECT count(*)
+            FROM product_formulations
+            WHERE formulation_id LIKE 'formulation:manual:%'
+            """
         ).fetchone() == (0,)
         assert conn.execute(
             "SELECT count(*) FROM products WHERE product_id LIKE 'product:manual:%'"
