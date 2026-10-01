@@ -10,6 +10,7 @@ import pytest
 from psycopg import sql
 
 from vitaminbot.application.kir116 import KIR116Controller, Screen
+from vitaminbot.application.supplements import QuickAddStep
 from vitaminbot.persistence import migrate
 from vitaminbot.persistence.kir116 import KIR116Store
 from vitaminbot.telegram.bot import build_application
@@ -558,3 +559,91 @@ def test_ml_is_hidden_and_rejected_before_count_persistence(
     unchanged = store.get_draft(user_id)
     assert unchanged is not None
     assert unchanged.unit_label is None
+
+
+def test_quick_add_uses_consumption_unit_basis_and_saves_plan_once(
+    kir116_controller: tuple[KIR116Controller, KIR116Store, str, str],
+) -> None:
+    controller, store, database_url, schema = kir116_controller
+    telegram_user_id = 101020
+
+    start = controller.quick_add_start(
+        telegram_user_id,
+        action_key="quick:start",
+    )
+    assert start.step is QuickAddStep.NAME
+
+    unit = controller.quick_add_text(
+        telegram_user_id,
+        "Magnesium Citrate",
+        action_key="quick:name",
+    )
+    assert unit.step is QuickAddStep.UNIT
+    assert unit.draft_id is not None
+    assert unit.revision is not None
+
+    quantity = controller.quick_add_callback(
+        telegram_user_id,
+        f"qau:{unit.draft_id}:{unit.revision}:c",
+        action_key="quick:unit",
+    )
+    assert quantity.step is QuickAddStep.QUANTITY
+    assert quantity.unit_label == "capsule"
+
+    duplicate_unit = controller.quick_add_callback(
+        telegram_user_id,
+        f"qau:{unit.draft_id}:{unit.revision}:c",
+        action_key="quick:unit",
+    )
+    assert duplicate_unit.step is QuickAddStep.QUANTITY
+
+    bucket = controller.quick_add_callback(
+        telegram_user_id,
+        "qaq:2",
+        action_key="quick:quantity",
+    )
+    assert bucket.step is QuickAddStep.BUCKET
+    assert bucket.quantity == Decimal("2")
+    assert bucket.revision is not None
+
+    complete = controller.quick_add_callback(
+        telegram_user_id,
+        f"qab:e:{bucket.revision}",
+        action_key="quick:bucket",
+    )
+    assert complete.step is QuickAddStep.COMPLETE
+    assert complete.name == "Magnesium Citrate"
+    assert complete.quantity == Decimal("2")
+    assert complete.bucket == "evening"
+
+    complete_again = controller.quick_add_callback(
+        telegram_user_id,
+        f"qab:e:{bucket.revision}",
+        action_key="quick:bucket",
+    )
+    assert complete_again.step is QuickAddStep.COMPLETE
+
+    user_id = store.ensure_user(telegram_user_id)
+    records = store.list_supplements(user_id)
+    assert len(records) == 1
+    record = records[0]
+    assert record.serving_basis_type == "per_consumption_unit"
+    assert record.units_per_serving == Decimal("1")
+    assert record.plan_quantity == Decimal("2")
+    assert record.plan_bucket == "evening"
+
+    with psycopg.connect(database_url) as conn:
+        conn.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(schema)))
+        basis = conn.execute(
+            """
+            SELECT basis_type, basis_quantity, label_text
+            FROM product_servings
+            WHERE formulation_id = %s
+            """,
+            (record.formulation_id,),
+        ).fetchone()
+        assert basis is not None
+        assert basis[0] == "per_consumption_unit"
+        assert basis[1] == Decimal("1")
+        assert "tracked unit" in basis[2]
+        assert conn.execute("SELECT count(*) FROM intake_plan_heads").fetchone() == (1,)
