@@ -78,8 +78,8 @@ from vitaminbot.nutrition import (
     normalize_per_consumption_unit,
     normalize_planned_daily_amount,
 )
+from vitaminbot.persistence.kir116 import InvalidTransition as SupplementInvalidTransition
 from vitaminbot.persistence.kir116 import (
-    InvalidTransition as SupplementInvalidTransition,
     KIR116Store,
     RecordNotFound,
     StaleAction,
