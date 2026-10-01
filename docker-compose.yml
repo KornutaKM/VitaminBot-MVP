@@ -1,6 +1,6 @@
 x-vitaminbot-environment: &vitaminbot-environment
   APP_ENV: ${APP_ENV:-development}
-  DATABASE_URL: ${DATABASE_URL_DOCKER:-postgresql://vitaminbot:replace-with-local-development-password@postgres:5432/vitaminbot}
+  DATABASE_URL: postgresql://${POSTGRES_USER:-vitaminbot}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-vitaminbot}
   TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
   REMINDER_MORNING_TIME: ${REMINDER_MORNING_TIME:-08:00}
   REMINDER_DAY_TIME: ${REMINDER_DAY_TIME:-13:00}
