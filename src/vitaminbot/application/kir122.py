@@ -195,14 +195,14 @@ class KIR122Controller:
             if quantity is None:
                 return self._serving_quantity_view(record, input_error=True)
             try:
-                updated = self._base_store.save_composition_serving_quantity(
+                updated_record = self._base_store.save_composition_serving_quantity(
                     user_id,
                     action_key,
                     quantity,
                 )
             except (ValueError, SupplementInvalidTransition, StaleAction, RecordNotFound):
                 return CompositionView(step=CompositionStep.STALE)
-            return self._composition_nutrient_view(user_id, updated)
+            return self._composition_nutrient_view(user_id, updated_record)
 
         session = self._store.session(user_id)
         if session is None or session.state != "amount_input":
@@ -213,7 +213,7 @@ class KIR122Controller:
             return self._amount_input_view(session, input_error=True)
         value, unit = parsed
         try:
-            updated = self._store.set_amount(
+            updated_session = self._store.set_amount(
                 user_id,
                 action_key,
                 value=value,
@@ -221,7 +221,7 @@ class KIR122Controller:
             )
         except (InvalidCompositionState, StaleCompositionAction):
             return CompositionView(step=CompositionStep.STALE)
-        return self._review_view(updated)
+        return self._review_view(updated_session)
 
     def apply_composition_action_view(
         self,
