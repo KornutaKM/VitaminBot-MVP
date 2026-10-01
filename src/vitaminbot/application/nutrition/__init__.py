@@ -8,6 +8,14 @@ from vitaminbot.application.views.composition import (
     CompositionSupplementView,
     CompositionView,
 )
+from vitaminbot.application.views.safety import (
+    SafetyContributorView,
+    SafetyEntryView,
+    SafetySourcesStatus,
+    SafetySourceView,
+    SafetySourcesView,
+    SafetyView,
+)
 from vitaminbot.application.views.totals import (
     NutrientContributorView,
     NutrientTotalsView,
@@ -30,5 +38,11 @@ __all__ = [
     "NutritionController",
     "RegimenTotalsStatus",
     "RegimenTotalsView",
+    "SafetyContributorView",
+    "SafetyEntryView",
+    "SafetySourcesStatus",
+    "SafetySourceView",
+    "SafetySourcesView",
+    "SafetyView",
     "VerticalView",
 ]
