@@ -13,8 +13,8 @@ from psycopg import sql
 from telegram import InlineKeyboardMarkup
 
 import vitaminbot.telegram.reminders as reminder_module
-from vitaminbot.application.intake import TodayActionStatus, TodayOccurrenceState
 from vitaminbot.application.kir116 import KIR116Controller, Screen
+from vitaminbot.application.intake import TodayActionStatus, TodayOccurrenceState
 from vitaminbot.application.kir120 import KIR120Controller
 from vitaminbot.persistence import migrate
 from vitaminbot.persistence.kir116 import KIR116Store
@@ -696,3 +696,65 @@ def test_structured_today_action_applies_once_and_reports_stale_retry(
 
     with _connect(database_url, schema) as conn:
         assert conn.execute("SELECT count(*) FROM intake_events").fetchone() == (1,)
+
+
+def test_pause_cancels_pending_reminder_and_resume_restarts_next_day(
+    kir120_system: tuple[KIR116Controller, KIR120Controller, KIR120Store, str, str],
+) -> None:
+    kir116, _, schedule_store, database_url, schema = kir120_system
+    telegram_user_id = 701012
+    user_id = _prepare_planned_user(kir116, schedule_store, telegram_user_id)
+    now = datetime(2026, 9, 20, 6, 0, tzinfo=UTC)
+
+    occurrence = schedule_store.today(user_id, now)[0]
+    claims = schedule_store.claim_due_reminders(now, "pause:claim")
+    assert len(claims) == 1
+
+    supplement_store = KIR116Store(database_url, schema=schema)
+    record = supplement_store.list_supplements(user_id)[0]
+    paused = supplement_store.pause_supplement(
+        user_id,
+        "pause:action",
+        record.instance_id,
+        record.revision,
+        now,
+    )
+    assert paused.lifecycle_status == "paused"
+
+    assert schedule_store.today(user_id, now) == ()
+    assert schedule_store.validate_claim(claims[0].delivery_id, now) is None
+
+    with _connect(database_url, schema) as conn:
+        assert conn.execute(
+            """
+            SELECT cancelled_at IS NOT NULL, cancellation_reason
+            FROM reminder_occurrences
+            WHERE occurrence_id = %s
+            """,
+            (occurrence.occurrence_id,),
+        ).fetchone() == (True, "supplement_paused")
+        assert conn.execute(
+            """
+            SELECT status
+            FROM reminder_delivery_attempts
+            WHERE delivery_id = %s
+            """,
+            (claims[0].delivery_id,),
+        ).fetchone() == ("cancelled",)
+
+    resumed = supplement_store.resume_supplement(
+        user_id,
+        "resume:action",
+        paused.instance_id,
+        paused.revision,
+    )
+    assert resumed.lifecycle_status == "active"
+
+    # The cancelled occurrence is not resurrected on the same local day.
+    assert schedule_store.today(user_id, now) == ()
+
+    next_day = now + timedelta(days=1)
+    occurrences = schedule_store.today(user_id, next_day)
+    assert len(occurrences) == 1
+    assert occurrences[0].instance_id == record.instance_id
+    assert occurrences[0].state == "pending"

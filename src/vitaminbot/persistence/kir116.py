@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
@@ -69,6 +70,7 @@ class SupplementRecord:
     plan_unit_label: str | None
     plan_revision: int | None
     serving_basis_type: str = "per_label_portion"
+    lifecycle_status: str = "active"
 
 
 class KIR116Store:
@@ -170,6 +172,7 @@ class KIR116Store:
             plan_unit_label=row["plan_unit_label"],
             plan_revision=row["plan_revision"],
             serving_basis_type=row["serving_basis_type"],
+            lifecycle_status=row["lifecycle_status"],
         )
 
     @staticmethod
@@ -1393,6 +1396,124 @@ class KIR116Store:
             self._complete_action(conn, user_id, action_key, supplement.instance_id)
             return self._supplement_by_id(conn, user_id, supplement.instance_id)
 
+    def pause_supplement(
+        self,
+        user_id: UUID,
+        action_key: str,
+        instance_id: str,
+        expected_revision: int,
+        now: datetime,
+    ) -> SupplementRecord:
+        with self._connect() as conn:
+            claimed, result_ref = self._claim_action(conn, user_id, action_key, "pause_supplement")
+            if not claimed and result_ref is not None:
+                return self._supplement_by_id(conn, user_id, result_ref)
+
+            supplement = self._locked_supplement(conn, user_id, instance_id)
+            if supplement.revision != expected_revision:
+                raise StaleAction("supplement changed before pause")
+            if supplement.lifecycle_status == "paused":
+                self._complete_action(conn, user_id, action_key, supplement.instance_id)
+                return supplement
+
+            row = conn.execute(
+                """
+                UPDATE user_supplements
+                SET lifecycle_status = 'paused',
+                    paused_at = %s,
+                    revision = revision + 1,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = %s
+                  AND instance_id = %s
+                  AND revision = %s
+                RETURNING instance_id
+                """,
+                (now, user_id, instance_id, expected_revision),
+            ).fetchone()
+            if row is None:
+                raise StaleAction("supplement changed before pause")
+
+            conn.execute(
+                """
+                UPDATE reminder_occurrences
+                SET cancelled_at = %s,
+                    cancellation_reason = 'supplement_paused',
+                    revision = revision + 1,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE tracked_instance_id = %s
+                  AND user_id = %s
+                  AND state = 'pending'
+                  AND cancelled_at IS NULL
+                """,
+                (now, instance_id, user_id),
+            )
+            conn.execute(
+                """
+                UPDATE reminder_delivery_attempts AS delivery
+                SET status = 'cancelled',
+                    completed_at = %s
+                WHERE delivery.status = 'claimed'
+                  AND EXISTS (
+                      SELECT 1
+                      FROM reminder_occurrences AS occurrence
+                      WHERE occurrence.occurrence_id = delivery.occurrence_id
+                        AND occurrence.tracked_instance_id = %s
+                        AND occurrence.user_id = %s
+                        AND occurrence.cancelled_at IS NOT NULL
+                  )
+                """,
+                (now, instance_id, user_id),
+            )
+            conn.execute(
+                """
+                DELETE FROM schedule_edit_sessions
+                WHERE user_id = %s
+                  AND tracked_instance_id = %s
+                """,
+                (user_id, instance_id),
+            )
+            self._complete_action(conn, user_id, action_key, instance_id)
+            return self._supplement_by_id(conn, user_id, instance_id)
+
+    def resume_supplement(
+        self,
+        user_id: UUID,
+        action_key: str,
+        instance_id: str,
+        expected_revision: int,
+    ) -> SupplementRecord:
+        with self._connect() as conn:
+            claimed, result_ref = self._claim_action(conn, user_id, action_key, "resume_supplement")
+            if not claimed and result_ref is not None:
+                return self._supplement_by_id(conn, user_id, result_ref)
+
+            supplement = self._locked_supplement(conn, user_id, instance_id)
+            if supplement.revision != expected_revision:
+                raise StaleAction("supplement changed before resume")
+            if supplement.lifecycle_status == "active":
+                self._complete_action(conn, user_id, action_key, supplement.instance_id)
+                return supplement
+
+            row = conn.execute(
+                """
+                UPDATE user_supplements
+                SET lifecycle_status = 'active',
+                    paused_at = NULL,
+                    revision = revision + 1,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = %s
+                  AND instance_id = %s
+                  AND revision = %s
+                RETURNING instance_id
+                """,
+                (user_id, instance_id, expected_revision),
+            ).fetchone()
+            if row is None:
+                raise StaleAction("supplement changed before resume")
+
+            self._complete_action(conn, user_id, action_key, instance_id)
+            return self._supplement_by_id(conn, user_id, instance_id)
+
     def remove_supplement(
         self,
         user_id: UUID,
@@ -1663,6 +1784,7 @@ class KIR116Store:
                 us.instance_id,
                 us.container_label,
                 us.revision,
+                us.lifecycle_status,
                 us.formulation_id,
                 unit.unit_id,
                 unit.label_name AS unit_label,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -133,6 +134,51 @@ class KIR116Controller:
         if record.revision != expected_revision:
             return SupplementDetailView(status=SupplementDetailStatus.STALE)
 
+        return self._supplement_detail_from_record(record)
+
+    def supplement_lifecycle_callback_view(
+        self,
+        telegram_user_id: int,
+        data: str,
+        *,
+        action_key: str,
+        now: datetime | None = None,
+    ) -> SupplementDetailView:
+        parts = data.split(":")
+        if len(parts) != 3 or parts[0] not in {"ps", "rs"}:
+            return SupplementDetailView(status=SupplementDetailStatus.NOT_FOUND)
+
+        user_id = self._store.ensure_user(telegram_user_id)
+        try:
+            expected_revision = int(parts[2])
+            instance_id = self._instance_id(parts[1])
+            if parts[0] == "ps":
+                current = now or datetime.now(UTC)
+                if current.tzinfo is None:
+                    raise ValueError("now must be timezone-aware")
+                record = self._store.pause_supplement(
+                    user_id,
+                    action_key,
+                    instance_id,
+                    expected_revision,
+                    current.astimezone(UTC),
+                )
+            else:
+                record = self._store.resume_supplement(
+                    user_id,
+                    action_key,
+                    instance_id,
+                    expected_revision,
+                )
+        except ValueError:
+            return SupplementDetailView(status=SupplementDetailStatus.NOT_FOUND)
+        except (InvalidTransition, StaleAction, RecordNotFound):
+            return SupplementDetailView(status=SupplementDetailStatus.STALE)
+
+        return self._supplement_detail_from_record(record)
+
+    @staticmethod
+    def _supplement_detail_from_record(record: SupplementRecord) -> SupplementDetailView:
         return SupplementDetailView(
             status=SupplementDetailStatus.READY,
             instance_id=record.instance_id,
@@ -144,6 +190,7 @@ class KIR116Controller:
             plan_quantity=record.plan_quantity,
             plan_bucket=record.plan_bucket,
             plan_unit_label=record.plan_unit_label,
+            lifecycle_status=record.lifecycle_status,
         )
 
     def quick_add_pending(self, telegram_user_id: int) -> bool:
@@ -195,14 +242,14 @@ class KIR116Controller:
                     revision=draft.revision,
                 )
             if session.state == "manual_unit":
-                existing_draft = self._store.get_draft(user_id)
-                if existing_draft is None:
+                draft = self._store.get_draft(user_id)
+                if draft is None:
                     return QuickAddView(step=QuickAddStep.STALE)
                 return QuickAddView(
                     step=QuickAddStep.UNIT,
-                    name=existing_draft.product_name,
-                    draft_id=existing_draft.draft_id,
-                    revision=existing_draft.revision,
+                    name=draft.product_name,
+                    draft_id=draft.draft_id,
+                    revision=draft.revision,
                 )
             if session.state == "plan_quantity":
                 quantity = self._parse_positive_decimal(value)
@@ -238,11 +285,11 @@ class KIR116Controller:
                 )
         except ValueError:
             if session.state == "manual_name":
-                existing_draft = self._store.get_draft(user_id)
+                draft = self._store.get_draft(user_id)
                 return QuickAddView(
                     step=QuickAddStep.NAME,
-                    draft_id=None if existing_draft is None else existing_draft.draft_id,
-                    revision=None if existing_draft is None else existing_draft.revision,
+                    draft_id=None if draft is None else draft.draft_id,
+                    revision=None if draft is None else draft.revision,
                 )
             if session.state == "plan_quantity" and session.target_instance_id is not None:
                 record = self._store.supplement(user_id, session.target_instance_id)

@@ -53,9 +53,25 @@ def render_supplement_detail(view: SupplementDetailView) -> Screen:
     plan = _plan_line(view)
     unit = _unit_label(view.unit_label, Decimal("1"))
     basis = _basis_line(view)
+    paused = view.lifecycle_status == "paused"
+    status = "На паузе" if paused else "Активен"
+    lifecycle_button = (
+        Button("Продолжить", f"rs:{token}:{view.revision}")
+        if paused
+        else Button("Пауза", f"ps:{token}:{view.revision}")
+    )
 
     return Screen(
-        text=(f"{view.name}\n\nРежим\n{plan}\n\nЕдиница учёта\n{unit}\n{basis}\n\nСтатус\nАктивен"),
+        text=(
+            f"{view.name}\n\n"
+            "Режим\n"
+            f"{plan}\n\n"
+            "Единица учёта\n"
+            f"{unit}\n"
+            f"{basis}\n\n"
+            "Статус\n"
+            f"{status}"
+        ),
         rows=(
             (Button("Изменить режим", f"p:{token}:{view.revision}"),),
             (Button("Состав и итоги", "k122comp"),),
@@ -63,6 +79,7 @@ def render_supplement_detail(view: SupplementDetailView) -> Screen:
                 Button("Изменить название", f"en:{token}:{view.revision}"),
                 Button("Изменить единицу", f"es:{token}:{view.revision}"),
             ),
+            (lifecycle_button,),
             (Button("Удалить…", f"rp:{token}:{view.revision}"),),
             (Button("Назад к добавкам", "ls"),),
         ),

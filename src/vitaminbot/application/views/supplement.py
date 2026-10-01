@@ -23,3 +23,4 @@ class SupplementDetailView:
     plan_quantity: Decimal | None = None
     plan_bucket: str | None = None
     plan_unit_label: str | None = None
+    lifecycle_status: str | None = None
