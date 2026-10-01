@@ -424,8 +424,7 @@ async def _export_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await message.reply_document(
         document=InputFile(export.payload, filename=export.filename),
         caption=(
-            "Экспорт данных VitaminBot. "
-            "Файл содержит данные вашего аккаунта на момент выгрузки."
+            "Экспорт данных VitaminBot. Файл содержит данные вашего аккаунта на момент выгрузки."
         ),
     )
 
