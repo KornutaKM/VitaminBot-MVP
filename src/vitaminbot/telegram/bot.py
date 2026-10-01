@@ -276,6 +276,7 @@ async def _help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "• /plan — повторяющийся план\n"
             "• /history — история и исправления\n"
             "• /stats — сводка отметок за 7 и 30 дней\n"
+            "• /totals — итоги нутриентов по подтверждённому составу и плану\n"
             "• /profile — технические настройки\n"
             "• /export — выгрузить данные аккаунта в JSON\n"
             "• /delete_account — удалить аккаунт и связанные данные\n"
@@ -288,6 +289,7 @@ async def _help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             (Button("Добавить добавку", "a"),),
             (Button("Добавки", "ls"), Button("План", "k120p")),
             (Button("История", "k120h"),),
+            (Button("Итоги", "k122tot"), Button("Статистика", "k120a")),
         ),
     )
     await _reply(update, project_v02_screen(screen, surface="help"))
