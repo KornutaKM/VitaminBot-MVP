@@ -3,12 +3,15 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import defaultdict
+
+import psycopg
 from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
 
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 
+from vitaminbot.observability import MetricsSink, NULL_METRICS
 from vitaminbot.persistence.kir120 import DeliveryClaim, KIR120Store
 
 _LOGGER = logging.getLogger(__name__)
@@ -17,11 +20,18 @@ _LOGGER = logging.getLogger(__name__)
 class TelegramReminderRunner:
     """Restart-safe polling runner backed by durable KIR-120 reminder state."""
 
-    def __init__(self, store: KIR120Store, *, poll_seconds: int = 30) -> None:
+    def __init__(
+        self,
+        store: KIR120Store,
+        *,
+        poll_seconds: int = 30,
+        metrics: MetricsSink = NULL_METRICS,
+    ) -> None:
         if poll_seconds < 1:
             raise ValueError("poll_seconds must be positive")
         self._store = store
         self._poll_seconds = poll_seconds
+        self._metrics = metrics
 
     async def run_once(self, bot: Bot, *, now: datetime | None = None) -> int:
         current = _utc_now(now)
@@ -37,8 +47,11 @@ class TelegramReminderRunner:
             if current_claim is not None:
                 validated.append(current_claim)
 
+        self._metrics.increment("reminders_due", len(validated))
         groups: dict[tuple[int, datetime], list[DeliveryClaim]] = defaultdict(list)
         for claim in validated:
+            lag_seconds = max(0.0, (current - claim.due_at).total_seconds())
+            self._metrics.observe("reminder_lag_seconds", lag_seconds)
             due_minute = claim.due_at.replace(second=0, microsecond=0)
             groups[(claim.telegram_user_id, due_minute)].append(claim)
 
@@ -74,6 +87,7 @@ class TelegramReminderRunner:
                         failure_code,
                         datetime.now(UTC),
                     )
+                self._metrics.increment("reminders_failed", len(final_group))
                 continue
 
             completed_at = datetime.now(UTC)
@@ -84,6 +98,7 @@ class TelegramReminderRunner:
                     completed_at,
                 )
                 delivered += 1
+            self._metrics.increment("reminders_sent", len(final_group))
         return delivered
 
     async def run_forever(self, bot: Bot) -> None:
@@ -92,6 +107,9 @@ class TelegramReminderRunner:
                 await self.run_once(bot)
             except asyncio.CancelledError:
                 raise
+            except psycopg.Error as exc:
+                self._metrics.increment("db_transaction_errors")
+                _LOGGER.warning("reminder database cycle failed: %s", type(exc).__name__)
             except Exception as exc:
                 _LOGGER.warning("reminder cycle failed: %s", type(exc).__name__)
             await asyncio.sleep(self._poll_seconds)
