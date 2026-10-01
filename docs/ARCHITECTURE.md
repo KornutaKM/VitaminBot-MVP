@@ -26,7 +26,7 @@ Future work should preserve clear boundaries between:
 - **Domain contracts**: canonical nutrient, ingredient, serving, unit, and provenance models governed by their assigned Linear work.
 - **Safety validation**: deterministic policy evaluation governed by the safety/scientific lane.
 - **Persistence**: PostgreSQL-backed durable application state and migrations.
-- **Scheduling/reminders**: durable reminder definitions and delivery coordination.
+- **Scheduling/reminders**: durable reminder definitions and delivery coordination. Telegram update handling and reminder delivery run as separate processes against the same PostgreSQL state.
 - **Caching/coordination**: Redis only where it provides a documented application need.
 
 These are boundaries, not permissions to implement work outside an assigned Linear issue.
@@ -39,6 +39,7 @@ These are boundaries, not permissions to implement work outside an assigned Line
 - Packaging: `pyproject.toml` with a `src/` layout
 - Quality gates: Ruff lint/format, Mypy, and Pytest
 - CI: GitHub Actions on pull requests and pushes to `main`
+- Runtime processes: `vitaminbot-bot` handles Telegram updates; `vitaminbot-worker` materializes, claims, validates, and sends durable reminders
 
 ## Configuration
 
