@@ -22,6 +22,7 @@ class CompositionStep(StrEnum):
 @dataclass(frozen=True, slots=True)
 class CompositionSupplementView:
     instance_id: str
+    token: str
     revision: int
     name: str
     unit_label: str
@@ -40,6 +41,7 @@ class CompositionView:
     step: CompositionStep
     supplements: tuple[CompositionSupplementView, ...] = ()
     instance_id: str | None = None
+    supplement_token: str | None = None
     supplement_revision: int | None = None
     name: str | None = None
     unit_label: str | None = None
