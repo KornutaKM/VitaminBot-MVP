@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -123,11 +124,32 @@ class VerticalSnapshot:
 class KIR122Store:
     """PostgreSQL boundary for composition capture and immutable vertical snapshots."""
 
-    def __init__(self, database_url: str, *, schema: str = "public") -> None:
+    def __init__(
+        self,
+        database_url: str,
+        *,
+        schema: str = "public",
+        connection: psycopg.Connection[dict[str, Any]] | None = None,
+    ) -> None:
         self._database_url = database_url
         self._schema = schema
+        self._connection = connection
 
-    def _connect(self, *, repeatable_read: bool = False) -> psycopg.Connection[dict[str, Any]]:
+    def _connect(
+        self,
+        *,
+        repeatable_read: bool = False,
+    ) -> AbstractContextManager[psycopg.Connection[dict[str, Any]]]:
+        if self._connection is not None:
+            if (
+                repeatable_read
+                and self._connection.isolation_level is not IsolationLevel.REPEATABLE_READ
+            ):
+                raise RuntimeError(
+                    "borrowed KIR122 connection must use REPEATABLE READ for snapshots"
+                )
+            return nullcontext(self._connection)
+
         conn: psycopg.Connection[dict[str, Any]] = psycopg.connect(
             self._database_url,
             row_factory=dict_row,
