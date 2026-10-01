@@ -76,10 +76,14 @@ def render_today(view: TodayView) -> Screen:
         if suffix:
             title = f"{title} · {suffix}"
         lines.append(title)
+        schedule = _schedule_label(
+            occurrence.schedule_kind,
+            occurrence.schedule_label,
+            occurrence.scheduled_local_time,
+        )
         lines.append(
             f"  {_display_quantity(occurrence.quantity)} "
-            f"{_display_unit(occurrence.unit_label, occurrence.quantity)} "
-            f"· {_schedule_label(occurrence.schedule_kind, occurrence.schedule_label, occurrence.scheduled_local_time)}"
+            f"{_display_unit(occurrence.unit_label, occurrence.quantity)} · {schedule}"
         )
         lines.append("")
 
