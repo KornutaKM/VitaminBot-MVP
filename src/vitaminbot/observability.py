@@ -59,4 +59,18 @@ class LoggingMetricsSink:
         self.logger.info("vitaminbot_metric %s", json.dumps(payload, separators=(",", ":")))
 
 
+def build_logging_metrics_sink(
+    logger_name: str = "vitaminbot.metrics",
+) -> LoggingMetricsSink:
+    """Return a stderr logger dedicated to numeric operational metrics only."""
+    logger = logging.getLogger(logger_name)
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    return LoggingMetricsSink(logger)
+
+
 NULL_METRICS = NullMetricsSink()
