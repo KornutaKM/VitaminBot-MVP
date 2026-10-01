@@ -9,7 +9,11 @@ from vitaminbot.config import Settings
 from vitaminbot.telegram.reminder_worker import build_runner, run_worker
 
 
-def _settings(*, token: str | None = "test-token", database_url: str | None = "postgresql://test") -> Settings:
+def _settings(
+    *,
+    token: str | None = "test-token",
+    database_url: str | None = "postgresql://test",
+) -> Settings:
     return Settings(
         app_env="test",
         database_url=database_url,
