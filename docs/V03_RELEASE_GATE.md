@@ -19,6 +19,7 @@ an automated regression test.
 | Adherence | 7/30-day summaries report planned/taken/skipped/unresolved without health judgment | `tests/test_v03_adherence.py` |
 | Regimen totals | Only confirmed composition × current plan contributes; incomplete aggregates withhold the full numeric total and keep unknown ≠ zero | `tests/test_v03_totals.py`, `tests/test_kir122_vertical_integration.py` |
 | Composition capture | Quick-add records must explicitly confirm label-serving quantity before manual nutrient facts; serving confirmation keeps the same product-unit identity and does not rewrite the saved plan | `tests/test_v03_composition.py`, `tests/test_kir122_vertical_integration.py` |
+| Structured safety | Governed safety-envelope fields remain fail-closed in Telegram; provenance is shown only for the exact current context revision and missing applicability is never treated as safety clearance | `tests/test_v03_safety.py`, `tests/test_kir122_vertical_integration.py`, `tests/test_safety_regression_kir121.py` |
 | Stale actions | Revision-bound callbacks fail closed and do not write duplicate intake | `tests/test_kir120_integration.py`, `tests/test_v03_today_renderer.py` |
 | Account control | Export is versioned; deletion is explicit, nonce-bound, cascading, and old tokens cannot delete recreated accounts | `tests/test_v03_account_data.py` |
 | Safety regression | Numeric safety behavior remains deterministic and independent from LLM output | `tests/test_safety_regression_kir121.py` |

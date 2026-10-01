@@ -13,7 +13,11 @@ from psycopg import sql
 from vitaminbot.application.kir116 import KIR116Controller, Screen
 from vitaminbot.application.kir120 import KIR120Controller
 from vitaminbot.application.kir122 import KIR122Controller
-from vitaminbot.application.nutrition import CompositionStep, RegimenTotalsStatus
+from vitaminbot.application.nutrition import (
+    CompositionStep,
+    RegimenTotalsStatus,
+    SafetySourcesStatus,
+)
 from vitaminbot.application.safety_envelope import (
     SafetyEvidenceState,
     SafetyStatus,
@@ -236,6 +240,17 @@ def test_clean_account_vertical_flow_is_snapshot_bound_and_fail_closed(
     assert all(item.context_revision.startswith("kir122:") for item in envelopes)
     assert any(item.evidence_state is SafetyEvidenceState.MISSING for item in envelopes)
 
+    structured_safety = vertical.safety_view(telegram_user_id)
+    assert structured_safety.entries
+    assert all(item.status is SafetyStatus.CANNOT_ASSESS for item in structured_safety.entries)
+    assert all(item.withheld_conclusion for item in structured_safety.entries)
+    assert all(item.resolution_path for item in structured_safety.entries)
+    assert any(
+        item.evidence_state is SafetyEvidenceState.MISSING for item in structured_safety.entries
+    )
+    assert structured_safety.source_revision
+    old_structured_revision = structured_safety.source_revision
+
     safety = vertical.safety(telegram_user_id)
     assert "Статус: Не могу оценить" in safety.text
     assert "Вывод удержан:" in safety.text
@@ -262,6 +277,13 @@ def test_clean_account_vertical_flow_is_snapshot_bound_and_fail_closed(
     )
     assert "Экран устарел" in stale.text
     assert "не переименовал старый расчёт как новый" in stale.text
+
+    structured_stale = vertical.safety_sources_view(
+        telegram_user_id,
+        old_structured_revision,
+    )
+    assert structured_stale.status is SafetySourcesStatus.STALE
+    assert structured_stale.sources == ()
 
     today = schedule.today(
         telegram_user_id,
@@ -1061,6 +1083,15 @@ def test_reference_sources_keep_locator_and_matched_applicability_context(
         action_key="cb:reference-provenance:sources",
     )
     assert "применимость: запись совпала с текущим контекстом" in sources.text
+
+    structured_safety = vertical.safety_view(telegram_user_id)
+    structured_sources = vertical.safety_sources_view(
+        telegram_user_id,
+        structured_safety.source_revision,
+    )
+    assert structured_sources.status is SafetySourcesStatus.READY
+    assert structured_sources.sources
+    assert all(source.applicability_status == "match" for source in structured_sources.sources)
 
     for source in provenance:
         assert source.title in sources.text

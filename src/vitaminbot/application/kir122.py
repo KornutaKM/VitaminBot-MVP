@@ -24,6 +24,14 @@ from vitaminbot.application.views.composition import (
     CompositionSupplementView,
     CompositionView,
 )
+from vitaminbot.application.views.safety import (
+    SafetyContributorView,
+    SafetyEntryView,
+    SafetySourcesStatus,
+    SafetySourcesView,
+    SafetySourceView,
+    SafetyView,
+)
 from vitaminbot.application.views.totals import (
     NutrientContributorView,
     NutrientTotalsView,
@@ -589,6 +597,135 @@ class KIR122Controller:
         )
         return self._reference_envelopes(view, bound) + (
             self._scope_envelope(view, context_revision=context_revision),
+        )
+
+    def safety_context_prompt(self, telegram_user_id: int) -> Screen | None:
+        """Return the existing governed JIT applicability prompt, if one is needed."""
+        if self._applicability_controller is None:
+            return None
+        user_id = self._base_store.ensure_user(telegram_user_id)
+        view = self._build_view(user_id)
+        return self._applicability_controller.prompt_for_pairs(
+            telegram_user_id,
+            pairs=self._reference_pairs(view),
+            base_revision=view.snapshot.context_revision,
+        )
+
+    def safety_view(self, telegram_user_id: int) -> SafetyView:
+        """Project governed safety envelopes without adding presentation conclusions."""
+        user_id = self._base_store.ensure_user(telegram_user_id)
+        view = self._build_view(user_id)
+        bound = self._bound_applicability(telegram_user_id, view.snapshot.context_revision)
+        context_revision = (
+            view.snapshot.context_revision if bound is None else bound.context_revision
+        )
+        envelopes = self._reference_envelopes(view, bound) + (
+            self._scope_envelope(view, context_revision=context_revision),
+        )
+        pairs = self._reference_pairs(view)
+        iron_scope_token = (
+            bound.iron_scope_key.removeprefix("iron:")
+            if bound is not None and any(key == "iron" for key, _ in pairs)
+            else None
+        )
+        return SafetyView(
+            entries=tuple(self._safety_entry_view(envelope) for envelope in envelopes),
+            source_revision=self._short_revision(context_revision),
+            has_applicability_profile=self._applicability_controller is not None,
+            iron_scope_token=iron_scope_token,
+        )
+
+    def safety_sources_view(
+        self,
+        telegram_user_id: int,
+        expected_revision: str,
+    ) -> SafetySourcesView:
+        """Return revision-bound public provenance without exposing internal source keys."""
+        user_id = self._base_store.ensure_user(telegram_user_id)
+        view = self._build_view(user_id)
+        bound = self._bound_applicability(telegram_user_id, view.snapshot.context_revision)
+        context_revision = (
+            view.snapshot.context_revision if bound is None else bound.context_revision
+        )
+        if self._short_revision(context_revision) != expected_revision:
+            return SafetySourcesView(
+                status=SafetySourcesStatus.STALE,
+                dataset_version=DATASET_VERSION,
+            )
+
+        unique_sources = {
+            (
+                source.title,
+                source.source_url,
+                source.version,
+                source.source_locator,
+                source.jurisdiction,
+                source.reference_type,
+                source.applicability_status,
+                source.scope_note,
+            )
+            for envelope in self._reference_envelopes(view, bound)
+            for source in envelope.provenance
+        }
+        sources = tuple(
+            SafetySourceView(
+                title=title,
+                source_url=url,
+                version=version,
+                source_locator=locator,
+                jurisdiction=jurisdiction,
+                reference_type=reference_type,
+                applicability_status=applicability_status,
+                scope_note=scope_note,
+            )
+            for (
+                title,
+                url,
+                version,
+                locator,
+                jurisdiction,
+                reference_type,
+                applicability_status,
+                scope_note,
+            ) in sorted(
+                unique_sources,
+                key=lambda item: (
+                    item[0],
+                    item[3],
+                    item[5] or "",
+                    item[1],
+                ),
+            )
+        )
+        return SafetySourcesView(
+            status=SafetySourcesStatus.READY,
+            dataset_version=DATASET_VERSION,
+            sources=sources,
+        )
+
+    @staticmethod
+    def _safety_entry_view(envelope: SafetyEnvelope) -> SafetyEntryView:
+        comparison = envelope.comparison_context
+        return SafetyEntryView(
+            subject_name=envelope.subject_name,
+            status=envelope.status,
+            classification=envelope.classification,
+            known_facts=tuple(fact.value for fact in envelope.known_facts),
+            unknown_facts=tuple(fact.value for fact in envelope.unknown_or_ambiguous),
+            withheld_conclusion=envelope.withheld_conclusion,
+            warnings=envelope.non_droppable_warnings,
+            resolution_path=envelope.resolution_path,
+            escalation_path=envelope.escalation_path,
+            reference_type=None if comparison is None else comparison.reference_type,
+            relation=None if comparison is None else comparison.relation,
+            evidence_state=envelope.evidence_state,
+            contributors=tuple(
+                SafetyContributorView(
+                    name=contributor.display_name,
+                    normalized_amount=contributor.normalized_amount,
+                )
+                for contributor in envelope.contributors
+            ),
         )
 
     def safety(self, telegram_user_id: int) -> Screen:
