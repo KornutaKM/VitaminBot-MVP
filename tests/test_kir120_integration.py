@@ -24,7 +24,6 @@ from vitaminbot.application.kir116 import KIR116Controller, Screen
 from vitaminbot.application.kir120 import KIR120Controller
 from vitaminbot.persistence import migrate
 from vitaminbot.persistence.kir116 import KIR116Store, SupplementRecord
-from vitaminbot.presentation.telegram import render_plan
 from vitaminbot.persistence.kir120 import (
     AmbiguousLocalTime,
     InvalidOccurrenceState,
@@ -32,6 +31,7 @@ from vitaminbot.persistence.kir120 import (
     NonexistentLocalTime,
     RoutineTimes,
 )
+from vitaminbot.presentation.telegram import render_plan
 from vitaminbot.telegram.bot import build_application
 from vitaminbot.telegram.reminders import TelegramReminderRunner
 
