@@ -645,6 +645,10 @@ class KIR120Store:
                     """,
                     (now, previous["intake_event_id"]),
                 )
+                self._correct_inventory_for_intake(
+                    conn,
+                    str(previous["intake_event_id"]),
+                )
 
             conn.execute(
                 """
@@ -1087,6 +1091,11 @@ class KIR120Store:
                             occurrence_id,
                         ),
                     )
+                    self._decrement_inventory_for_intake(
+                        conn,
+                        current,
+                        intake_event_id,
+                    )
 
             conn.execute(
                 """
@@ -1320,6 +1329,195 @@ class KIR120Store:
             WHERE user_id = %s AND action_key = %s
             """,
             (result_ref, user_id, action_key),
+        )
+
+    @staticmethod
+    def _decrement_inventory_for_intake(
+        conn: psycopg.Connection[dict[str, Any]],
+        occurrence: OccurrenceRecord,
+        intake_event_id: str,
+    ) -> None:
+        inventory = conn.execute(
+            """
+            SELECT remaining_units, revision, needs_reconciliation
+            FROM supplement_inventory
+            WHERE tracked_instance_id = %s
+              AND consumption_unit_id = %s
+            FOR UPDATE
+            """,
+            (occurrence.instance_id, occurrence.unit_id),
+        ).fetchone()
+        if inventory is None:
+            return
+
+        balance_before: Decimal = inventory["remaining_units"]
+        needs_before = bool(inventory["needs_reconciliation"])
+        if balance_before >= occurrence.quantity:
+            balance_after = balance_before - occurrence.quantity
+            needs_after = needs_before
+        else:
+            balance_after = Decimal("0")
+            needs_after = True
+
+        updated = conn.execute(
+            """
+            UPDATE supplement_inventory
+            SET remaining_units = %s,
+                needs_reconciliation = %s,
+                revision = revision + 1,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE tracked_instance_id = %s
+              AND revision = %s
+            RETURNING revision
+            """,
+            (
+                balance_after,
+                needs_after,
+                occurrence.instance_id,
+                inventory["revision"],
+            ),
+        ).fetchone()
+        if updated is None:
+            raise InvalidOccurrenceState("inventory changed during intake recording")
+
+        conn.execute(
+            """
+            INSERT INTO inventory_events (
+                event_id,
+                tracked_instance_id,
+                consumption_unit_id,
+                event_kind,
+                quantity_units,
+                balance_before,
+                balance_after,
+                needs_reconciliation_before,
+                inventory_revision_after,
+                intake_event_id,
+                balance_applied
+            )
+            VALUES (%s, %s, %s, 'intake_decrement', %s, %s, %s, %s, %s, %s, TRUE)
+            """,
+            (
+                f"inventory:event:{uuid4().hex}",
+                occurrence.instance_id,
+                occurrence.unit_id,
+                occurrence.quantity,
+                balance_before,
+                balance_after,
+                needs_before,
+                int(updated["revision"]),
+                intake_event_id,
+            ),
+        )
+
+    @staticmethod
+    def _correct_inventory_for_intake(
+        conn: psycopg.Connection[dict[str, Any]],
+        intake_event_id: str,
+    ) -> None:
+        event = conn.execute(
+            """
+            SELECT
+                event_id,
+                tracked_instance_id,
+                consumption_unit_id,
+                quantity_units,
+                balance_before,
+                inventory_revision_after,
+                needs_reconciliation_before
+            FROM inventory_events
+            WHERE intake_event_id = %s
+              AND event_kind = 'intake_decrement'
+            FOR UPDATE
+            """,
+            (intake_event_id,),
+        ).fetchone()
+        if event is None:
+            return
+
+        inventory = conn.execute(
+            """
+            SELECT remaining_units, revision, consumption_unit_id, needs_reconciliation
+            FROM supplement_inventory
+            WHERE tracked_instance_id = %s
+            FOR UPDATE
+            """,
+            (event["tracked_instance_id"],),
+        ).fetchone()
+        if inventory is None:
+            return
+
+        current_balance: Decimal = inventory["remaining_units"]
+        current_revision = int(inventory["revision"])
+        exact_reversal = (
+            current_revision == int(event["inventory_revision_after"])
+            and inventory["consumption_unit_id"] == event["consumption_unit_id"]
+            and event["balance_before"] is not None
+        )
+
+        if exact_reversal:
+            balance_after = event["balance_before"]
+            needs_after = bool(event["needs_reconciliation_before"])
+            balance_applied = True
+        else:
+            balance_after = current_balance
+            needs_after = True
+            balance_applied = False
+
+        updated = conn.execute(
+            """
+            UPDATE supplement_inventory
+            SET remaining_units = %s,
+                needs_reconciliation = %s,
+                revision = revision + 1,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE tracked_instance_id = %s
+              AND revision = %s
+            RETURNING revision
+            """,
+            (
+                balance_after,
+                needs_after,
+                event["tracked_instance_id"],
+                current_revision,
+            ),
+        ).fetchone()
+        if updated is None:
+            raise InvalidOccurrenceState("inventory changed during intake correction")
+
+        conn.execute(
+            """
+            INSERT INTO inventory_events (
+                event_id,
+                tracked_instance_id,
+                consumption_unit_id,
+                event_kind,
+                quantity_units,
+                balance_before,
+                balance_after,
+                needs_reconciliation_before,
+                inventory_revision_after,
+                intake_event_id,
+                related_event_id,
+                balance_applied
+            )
+            VALUES (
+                %s, %s, %s, 'intake_correction', %s, %s, %s, %s, %s, %s, %s, %s
+            )
+            """,
+            (
+                f"inventory:event:{uuid4().hex}",
+                event["tracked_instance_id"],
+                event["consumption_unit_id"],
+                event["quantity_units"],
+                current_balance,
+                balance_after,
+                bool(inventory["needs_reconciliation"]),
+                int(updated["revision"]),
+                intake_event_id,
+                event["event_id"],
+                balance_applied,
+            ),
         )
 
     @staticmethod

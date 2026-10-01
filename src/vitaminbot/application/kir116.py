@@ -197,6 +197,7 @@ class KIR116Controller:
             inventory_remaining_units=record.inventory_remaining_units,
             inventory_unit_id=record.inventory_unit_id,
             inventory_revision=record.inventory_revision,
+            inventory_needs_reconciliation=record.inventory_needs_reconciliation,
         )
 
     def inventory_edit_pending(self, telegram_user_id: int) -> bool:

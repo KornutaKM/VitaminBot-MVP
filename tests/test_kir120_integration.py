@@ -17,7 +17,7 @@ from vitaminbot.application.intake import TodayActionStatus, TodayOccurrenceStat
 from vitaminbot.application.kir116 import KIR116Controller, Screen
 from vitaminbot.application.kir120 import KIR120Controller
 from vitaminbot.persistence import migrate
-from vitaminbot.persistence.kir116 import KIR116Store
+from vitaminbot.persistence.kir116 import KIR116Store, SupplementRecord
 from vitaminbot.persistence.kir120 import (
     AmbiguousLocalTime,
     InvalidOccurrenceState,
@@ -758,3 +758,194 @@ def test_pause_cancels_pending_reminder_and_resume_restarts_next_day(
     assert len(occurrences) == 1
     assert occurrences[0].instance_id == record.instance_id
     assert occurrences[0].state == "pending"
+
+
+def _set_inventory(
+    store: KIR116Store,
+    user_id: UUID,
+    record: SupplementRecord,
+    quantity: Decimal,
+    *,
+    key: str,
+) -> None:
+    store.begin_inventory_edit(
+        user_id,
+        f"{key}:begin",
+        record.instance_id,
+        record.revision,
+    )
+    store.save_inventory_quantity(
+        user_id,
+        f"{key}:set",
+        quantity,
+    )
+
+
+def test_taken_decrements_inventory_once_and_immediate_correction_restores_exact_balance(
+    kir120_system: tuple[KIR116Controller, KIR120Controller, KIR120Store, str, str],
+) -> None:
+    kir116, _, schedule_store, database_url, schema = kir120_system
+    telegram_user_id = 701013
+    user_id = _prepare_planned_user(kir116, schedule_store, telegram_user_id)
+    inventory_store = KIR116Store(database_url, schema=schema)
+    record = inventory_store.list_supplements(user_id)[0]
+    _set_inventory(inventory_store, user_id, record, Decimal("5"), key="ledger:exact")
+
+    now = datetime(2026, 9, 20, 6, 0, tzinfo=UTC)
+    occurrence = schedule_store.today(user_id, now)[0]
+    taken = schedule_store.take(
+        user_id,
+        occurrence.occurrence_id,
+        occurrence.revision,
+        "ledger:taken",
+        now,
+    )
+
+    after_taken = inventory_store.supplement(user_id, record.instance_id)
+    assert after_taken.inventory_remaining_units == Decimal("3")
+    assert after_taken.inventory_revision == 2
+    assert after_taken.inventory_needs_reconciliation is False
+
+    # Duplicate action delivery does not consume stock twice.
+    schedule_store.take(
+        user_id,
+        occurrence.occurrence_id,
+        occurrence.revision,
+        "ledger:taken",
+        now,
+    )
+    duplicate_balance = inventory_store.supplement(user_id, record.instance_id)
+    assert duplicate_balance.inventory_remaining_units == Decimal("3")
+    assert duplicate_balance.inventory_revision == 2
+
+    corrected = schedule_store.correct_latest(
+        user_id,
+        occurrence.occurrence_id,
+        taken.revision,
+        "ledger:correct",
+        now + timedelta(minutes=1),
+    )
+    assert corrected.state == "needs_review"
+
+    after_correction = inventory_store.supplement(user_id, record.instance_id)
+    assert after_correction.inventory_remaining_units == Decimal("5")
+    assert after_correction.inventory_revision == 3
+    assert after_correction.inventory_needs_reconciliation is False
+
+    with _connect(database_url, schema) as conn:
+        events = conn.execute(
+            """
+            SELECT event_kind, balance_before, balance_after, balance_applied
+            FROM inventory_events
+            WHERE tracked_instance_id = %s
+            ORDER BY created_at, event_kind
+            """,
+            (record.instance_id,),
+        ).fetchall()
+    kinds = [row[0] for row in events]
+    assert kinds.count("manual_set") == 1
+    assert kinds.count("intake_decrement") == 1
+    assert kinds.count("intake_correction") == 1
+    correction = next(row for row in events if row[0] == "intake_correction")
+    assert correction[1:] == (Decimal("3"), Decimal("5"), True)
+
+
+def test_correction_after_manual_inventory_reset_marks_reconciliation_without_guessing(
+    kir120_system: tuple[KIR116Controller, KIR120Controller, KIR120Store, str, str],
+) -> None:
+    kir116, _, schedule_store, database_url, schema = kir120_system
+    telegram_user_id = 701014
+    user_id = _prepare_planned_user(kir116, schedule_store, telegram_user_id)
+    inventory_store = KIR116Store(database_url, schema=schema)
+    record = inventory_store.list_supplements(user_id)[0]
+    _set_inventory(inventory_store, user_id, record, Decimal("5"), key="ledger:manual-reset")
+
+    now = datetime(2026, 9, 20, 6, 0, tzinfo=UTC)
+    occurrence = schedule_store.today(user_id, now)[0]
+    taken = schedule_store.take(
+        user_id,
+        occurrence.occurrence_id,
+        occurrence.revision,
+        "ledger:reset:taken",
+        now,
+    )
+    after_taken = inventory_store.supplement(user_id, record.instance_id)
+    assert after_taken.inventory_remaining_units == Decimal("3")
+
+    # The user physically recounts/replaces stock after the intake.
+    _set_inventory(
+        inventory_store,
+        user_id,
+        after_taken,
+        Decimal("20"),
+        key="ledger:reset:manual",
+    )
+    manually_reset = inventory_store.supplement(user_id, record.instance_id)
+    assert manually_reset.inventory_remaining_units == Decimal("20")
+    assert manually_reset.inventory_revision == 3
+
+    schedule_store.correct_latest(
+        user_id,
+        occurrence.occurrence_id,
+        taken.revision,
+        "ledger:reset:correction",
+        now + timedelta(minutes=1),
+    )
+
+    reconciled = inventory_store.supplement(user_id, record.instance_id)
+    assert reconciled.inventory_remaining_units == Decimal("20")
+    assert reconciled.inventory_revision == 4
+    assert reconciled.inventory_needs_reconciliation is True
+
+    with _connect(database_url, schema) as conn:
+        correction = conn.execute(
+            """
+            SELECT balance_before, balance_after, balance_applied
+            FROM inventory_events
+            WHERE tracked_instance_id = %s
+              AND event_kind = 'intake_correction'
+            """,
+            (record.instance_id,),
+        ).fetchone()
+    assert correction == (Decimal("20"), Decimal("20"), False)
+
+    # A new explicit physical count clears the reconciliation flag.
+    _set_inventory(
+        inventory_store,
+        user_id,
+        reconciled,
+        Decimal("20"),
+        key="ledger:reset:reconciled",
+    )
+    final = inventory_store.supplement(user_id, record.instance_id)
+    assert final.inventory_remaining_units == Decimal("20")
+    assert final.inventory_needs_reconciliation is False
+
+
+def test_inventory_underflow_never_blocks_taken_and_requests_reconciliation(
+    kir120_system: tuple[KIR116Controller, KIR120Controller, KIR120Store, str, str],
+) -> None:
+    kir116, _, schedule_store, database_url, schema = kir120_system
+    telegram_user_id = 701015
+    user_id = _prepare_planned_user(kir116, schedule_store, telegram_user_id)
+    inventory_store = KIR116Store(database_url, schema=schema)
+    record = inventory_store.list_supplements(user_id)[0]
+    _set_inventory(inventory_store, user_id, record, Decimal("1"), key="ledger:underflow")
+
+    now = datetime(2026, 9, 20, 6, 0, tzinfo=UTC)
+    occurrence = schedule_store.today(user_id, now)[0]
+    taken = schedule_store.take(
+        user_id,
+        occurrence.occurrence_id,
+        occurrence.revision,
+        "ledger:underflow:taken",
+        now,
+    )
+    assert taken.state == "taken"
+
+    inventory = inventory_store.supplement(user_id, record.instance_id)
+    assert inventory.inventory_remaining_units == Decimal("0")
+    assert inventory.inventory_needs_reconciliation is True
+
+    with _connect(database_url, schema) as conn:
+        assert conn.execute("SELECT count(*) FROM intake_events").fetchone() == (1,)

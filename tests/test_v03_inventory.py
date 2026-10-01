@@ -91,3 +91,57 @@ def test_inventory_invalid_and_cancelled_are_explicit() -> None:
 
     cancelled = render_inventory_edit(InventoryEditView(step=InventoryEditStep.CANCELLED))
     assert "Изменение запаса отменено." in cancelled.text
+
+
+def test_reconciliation_state_suppresses_day_forecast() -> None:
+    view = SupplementDetailView(
+        status=SupplementDetailStatus.READY,
+        instance_id="instance:manual:0123456789abcdef",
+        revision=3,
+        name="Magnesium Citrate",
+        unit_id="unit:manual:0123456789abcdef",
+        unit_label="capsule",
+        serving_basis_type="per_consumption_unit",
+        units_per_serving=Decimal("1"),
+        plan_quantity=Decimal("2"),
+        plan_bucket="evening",
+        plan_unit_label="capsule",
+        plan_unit_id="unit:manual:0123456789abcdef",
+        lifecycle_status="active",
+        inventory_remaining_units=Decimal("20"),
+        inventory_unit_id="unit:manual:0123456789abcdef",
+        inventory_revision=4,
+        inventory_needs_reconciliation=True,
+    )
+
+    screen = render_supplement_detail(view)
+
+    assert "20 капсул · нужно уточнить" in screen.text
+    assert "≈ 10 дн." not in screen.text
+
+
+def test_inventory_reconciliation_hides_forecast_until_user_recounts() -> None:
+    view = SupplementDetailView(
+        status=SupplementDetailStatus.READY,
+        instance_id="instance:manual:0123456789abcdef",
+        revision=5,
+        name="Magnesium Citrate",
+        unit_id="unit:manual:0123456789abcdef",
+        unit_label="capsule",
+        serving_basis_type="per_consumption_unit",
+        units_per_serving=Decimal("1"),
+        plan_quantity=Decimal("2"),
+        plan_bucket="evening",
+        plan_unit_label="capsule",
+        plan_unit_id="unit:manual:0123456789abcdef",
+        lifecycle_status="active",
+        inventory_remaining_units=Decimal("0"),
+        inventory_unit_id="unit:manual:0123456789abcdef",
+        inventory_revision=4,
+        inventory_needs_reconciliation=True,
+    )
+
+    screen = render_supplement_detail(view)
+
+    assert "Запас\n0 капсул · нужно уточнить" in screen.text
+    assert "≈" not in screen.text
