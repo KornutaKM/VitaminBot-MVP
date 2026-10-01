@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
@@ -195,12 +196,19 @@ class KIR120Store:
         *,
         schema: str = "public",
         routine_times: RoutineTimes | None = None,
+        connection: psycopg.Connection[dict[str, Any]] | None = None,
     ) -> None:
         self._database_url = database_url
         self._schema = schema
         self._routine_times = routine_times or RoutineTimes.from_strings("08:00", "13:00", "19:00")
+        self._connection = connection
 
-    def _connect(self) -> psycopg.Connection[dict[str, Any]]:
+    def _connect(
+        self,
+    ) -> AbstractContextManager[psycopg.Connection[dict[str, Any]]]:
+        if self._connection is not None:
+            return nullcontext(self._connection)
+
         conn: psycopg.Connection[dict[str, Any]] = psycopg.connect(
             self._database_url,
             row_factory=dict_row,
