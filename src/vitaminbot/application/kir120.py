@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 from datetime import UTC, datetime, time, timedelta
 from decimal import Decimal
+from uuid import UUID
 
 from vitaminbot.application.kir116 import Button, Screen
 from vitaminbot.application.views.adherence import (
@@ -598,11 +599,11 @@ class KIR120Controller:
 
     def _plan_time_edit_view(
         self,
-        user_id: object,
+        user_id: UUID,
         instance_id: str,
         expected_revision: int,
     ) -> PlanTimeEditView | None:
-        templates = self._store.list_templates(user_id)  # type: ignore[arg-type]
+        templates = self._store.list_templates(user_id)
         template = next(
             (
                 item
