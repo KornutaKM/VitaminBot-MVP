@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from uuid import UUID
 
+from vitaminbot.application.intake import TodayStatus, TodayView
 from vitaminbot.application.kir116 import Button, Screen
 from vitaminbot.application.kir120 import KIR120Controller
 from vitaminbot.persistence.kir120 import OccurrenceRecord
@@ -43,11 +44,12 @@ class _StartSchedule:
     def __init__(self) -> None:
         self.today_calls = 0
 
-    def today(self, telegram_user_id: int) -> Screen:
+    def today_view(self, telegram_user_id: int) -> TodayView:
+        assert telegram_user_id > 0
         self.today_calls += 1
-        return Screen(
-            text="Today\n\nNo scheduled occurrences for this local day.",
-            rows=((Button("Open Plan", "k120p"),),),
+        return TodayView(
+            status=TodayStatus.READY,
+            local_date=date(2026, 10, 1),
         )
 
 
@@ -64,7 +66,7 @@ def test_start_routes_first_use_to_onboarding_and_returning_user_to_today() -> N
     returning = _StartBase(returning=True)
     today_screen, today_surface = _resolve_start_screen(returning, schedule, 169002)
     assert today_surface == "today"
-    assert today_screen.text.startswith("Today")
+    assert today_screen.text.startswith("Сегодня")
     assert returning.start_calls == 0
     assert schedule.today_calls == 1
 
