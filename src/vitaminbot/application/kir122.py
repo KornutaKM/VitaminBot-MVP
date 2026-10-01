@@ -627,6 +627,12 @@ class KIR122Controller:
 
     def has_pending_text(self, telegram_user_id: int) -> bool:
         user_id = self._base_store.ensure_user(telegram_user_id)
+        base_session = self._base_store.get_session(user_id)
+        if (
+            base_session is not None
+            and base_session.state == "composition_serving_quantity"
+        ):
+            return True
         session = self._store.session(user_id)
         return session is not None and session.state == "amount_input"
 
@@ -803,6 +809,72 @@ class KIR122Controller:
             if "k122tot" not in callbacks:
                 rows.append((Button("Итоги", "k122tot"), Button("Почему?", "k122rules")))
         return Screen(text=screen.text, rows=tuple(rows))
+
+    def _serving_quantity_view(
+        self,
+        record: SupplementRecord,
+        *,
+        input_error: bool = False,
+    ) -> CompositionView:
+        return CompositionView(
+            step=CompositionStep.SERVING_QUANTITY,
+            instance_id=record.instance_id,
+            supplement_token=self._token(record.instance_id),
+            supplement_revision=record.revision,
+            name=record.name,
+            unit_label=record.unit_label,
+            input_error=input_error,
+        )
+
+    def _composition_nutrient_view(
+        self,
+        user_id: UUID,
+        record: SupplementRecord,
+    ) -> CompositionView:
+        existing = set(self._store.manual_substance_keys(user_id, record.instance_id))
+        nutrients = tuple(
+            CompositionNutrientOption(substance_key=key, name=name)
+            for key, name in _RU_SUBSTANCE_NAMES.items()
+            if key not in existing and self._subject_for_substance(key) is not None
+        )
+        return CompositionView(
+            step=CompositionStep.NUTRIENT,
+            instance_id=record.instance_id,
+            supplement_token=self._token(record.instance_id),
+            supplement_revision=record.revision,
+            name=record.name,
+            unit_label=record.unit_label,
+            nutrients=nutrients,
+        )
+
+    @staticmethod
+    def _amount_input_view(
+        session: CompositionSession,
+        *,
+        input_error: bool = False,
+    ) -> CompositionView:
+        return CompositionView(
+            step=CompositionStep.AMOUNT,
+            instance_id=session.tracked_instance_id,
+            supplement_revision=session.expected_supplement_revision,
+            substance_key=session.substance_key,
+            nutrient_name=session.display_name,
+            session_revision=session.revision,
+            input_error=input_error,
+        )
+
+    @staticmethod
+    def _review_view(session: CompositionSession) -> CompositionView:
+        return CompositionView(
+            step=CompositionStep.REVIEW,
+            instance_id=session.tracked_instance_id,
+            supplement_revision=session.expected_supplement_revision,
+            substance_key=session.substance_key,
+            nutrient_name=session.display_name,
+            value=session.pending_value,
+            unit=session.pending_unit,
+            session_revision=session.revision,
+        )
 
     def _substance_picker(self, user_id: UUID, record: SupplementRecord) -> Screen:
         existing = set(self._store.manual_substance_keys(user_id, record.instance_id))
@@ -1727,6 +1799,19 @@ class KIR122Controller:
             if subject_id in ids:
                 return name
         return "Подтверждённый нутриент"
+
+    @staticmethod
+    def _parse_positive_count(value: str) -> Decimal | None:
+        match = _COUNT_PATTERN.fullmatch(value)
+        if match is None:
+            return None
+        try:
+            number = Decimal(match.group(1).replace(",", "."))
+        except InvalidOperation:
+            return None
+        if not number.is_finite() or number <= 0:
+            return None
+        return number
 
     @staticmethod
     def _parse_amount(value: str) -> tuple[Decimal, str] | None:
