@@ -2,6 +2,8 @@
 
 from vitaminbot.application.kir120 import KIR120Controller
 from vitaminbot.application.views.today import (
+    TodayActionResult,
+    TodayActionStatus,
     TodayOccurrenceState,
     TodayOccurrenceView,
     TodayStatus,
@@ -12,6 +14,8 @@ from vitaminbot.application.views.today import (
 IntakeController = KIR120Controller
 
 __all__ = [
+    "TodayActionResult",
+    "TodayActionStatus",
     "IntakeController",
     "TodayOccurrenceState",
     "TodayOccurrenceView",

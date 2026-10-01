@@ -13,6 +13,7 @@ from psycopg import sql
 from telegram import InlineKeyboardMarkup
 
 import vitaminbot.telegram.reminders as reminder_module
+from vitaminbot.application.intake import TodayActionStatus, TodayOccurrenceState
 from vitaminbot.application.kir116 import KIR116Controller, Screen
 from vitaminbot.application.kir120 import KIR120Controller
 from vitaminbot.persistence import migrate
@@ -653,3 +654,45 @@ def test_runner_suppresses_group_when_claim_lease_expires_before_send(
             """,
             (occurrence.occurrence_id,),
         ).fetchone() == ("cancelled",)
+
+
+def test_structured_today_action_applies_once_and_reports_stale_retry(
+    kir120_system: tuple[KIR116Controller, KIR120Controller, KIR120Store, str, str],
+) -> None:
+    kir116, controller, store, database_url, schema = kir120_system
+    telegram_user_id = 701011
+    _prepare_planned_user(kir116, store, telegram_user_id)
+    now = datetime(2026, 9, 20, 6, 0, tzinfo=UTC)
+
+    before = controller.today_view(telegram_user_id, now=now)
+    occurrence = before.occurrences[0]
+    callback = f"k120t:{occurrence.occurrence_id}:{occurrence.revision}"
+
+    applied = controller.apply_today_action_view(
+        telegram_user_id,
+        callback,
+        action_key="structured:taken",
+        now=now,
+    )
+    assert applied.status is TodayActionStatus.APPLIED
+    assert applied.view is not None
+    assert applied.view.occurrences[0].state is TodayOccurrenceState.TAKEN
+
+    stale = controller.apply_today_action_view(
+        telegram_user_id,
+        callback,
+        action_key="structured:stale-retry",
+        now=now,
+    )
+    assert stale.status is TodayActionStatus.STALE
+
+    invalid = controller.apply_today_action_view(
+        telegram_user_id,
+        "k120t:missing-revision",
+        action_key="structured:invalid",
+        now=now,
+    )
+    assert invalid.status is TodayActionStatus.INVALID
+
+    with _connect(database_url, schema) as conn:
+        assert conn.execute("SELECT count(*) FROM intake_events").fetchone() == (1,)

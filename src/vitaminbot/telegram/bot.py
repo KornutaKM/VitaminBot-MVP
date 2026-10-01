@@ -32,6 +32,7 @@ from vitaminbot.persistence.kir116 import KIR116Store
 from vitaminbot.persistence.kir120 import KIR120Store, RoutineTimes
 from vitaminbot.persistence.kir122 import KIR122Store
 from vitaminbot.persistence.kir174 import KIR174Store
+from vitaminbot.presentation.telegram import render_today, render_today_action_result
 from vitaminbot.telegram.presentation import (
     project_v02_scientific_shell,
     project_v02_screen,
@@ -183,7 +184,7 @@ def _resolve_start_screen(
     telegram_user_id: int,
 ) -> tuple[Screen, str]:
     if base.has_supplements(telegram_user_id) and schedule is not None:
-        return schedule.today(telegram_user_id), "today"
+        return render_today(schedule.today_view(telegram_user_id)), "today"
     return base.start(telegram_user_id), "start"
 
 
@@ -327,8 +328,8 @@ async def _today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     controller = _schedule_controller(context)
     if telegram_user_id is None or controller is None:
         return
-    screen = await asyncio.to_thread(controller.today, telegram_user_id)
-    await _reply(update, _operational_screen(context, screen, surface="today"))
+    view = await asyncio.to_thread(controller.today_view, telegram_user_id)
+    await _reply(update, render_today(view))
 
 
 async def _plan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -460,6 +461,7 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     applicability_controller = _applicability_controller(context)
     scientific = False
     applicability_action = False
+    structured_today = False
     if query.data.startswith("k174") and applicability_controller is not None:
         applicability_action = True
         screen = await asyncio.to_thread(
@@ -482,6 +484,25 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             telegram_user_id,
             query.data,
         )
+    elif query.data == "k120today" and schedule_controller is not None:
+        view = await asyncio.to_thread(
+            schedule_controller.today_view,
+            telegram_user_id,
+        )
+        screen = render_today(view)
+        structured_today = True
+    elif (
+        query.data.startswith(("k120t:", "k120s:", "k120l:"))
+        and schedule_controller is not None
+    ):
+        result = await asyncio.to_thread(
+            schedule_controller.apply_today_action_view,
+            telegram_user_id,
+            query.data,
+            action_key=action_key,
+        )
+        screen = render_today_action_result(result)
+        structured_today = True
     elif query.data.startswith("k120") and schedule_controller is not None:
         screen = await asyncio.to_thread(
             schedule_controller.callback,
@@ -497,7 +518,9 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             action_key=action_key,
         )
     if not applicability_action:
-        if scientific:
+        if structured_today:
+            pass
+        elif scientific:
             screen = _scientific_screen(screen)
         else:
             screen = _operational_screen(
