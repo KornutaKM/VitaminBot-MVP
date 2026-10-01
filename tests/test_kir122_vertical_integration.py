@@ -246,8 +246,7 @@ def test_clean_account_vertical_flow_is_snapshot_bound_and_fail_closed(
     assert all(item.withheld_conclusion for item in structured_safety.entries)
     assert all(item.resolution_path for item in structured_safety.entries)
     assert any(
-        item.evidence_state is SafetyEvidenceState.MISSING
-        for item in structured_safety.entries
+        item.evidence_state is SafetyEvidenceState.MISSING for item in structured_safety.entries
     )
     assert structured_safety.source_revision
     old_structured_revision = structured_safety.source_revision
