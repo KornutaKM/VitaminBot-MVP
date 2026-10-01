@@ -92,13 +92,12 @@ def render_quick_add(view: QuickAddView) -> Screen:
         quantity = view.quantity or Decimal("0")
         amount = f"{_decimal(quantity)} {_unit_label(view.unit_label, quantity)}"
         when = _BUCKET_RU.get(view.bucket or "", view.bucket or "")
+        details = amount if not when else f"{amount} · {when}"
         return Screen(
             text=(
                 "Готово ✓\n\n"
                 f"{view.name or 'Добавка'}\n"
-                f"{amount}"
-                + (f" · {when}" if when else "")
-                + "\n\n"
+                f"{details}\n\n"
                 "Состав этикетки можно добавить отдельно. "
                 "Он не нужен для работы ежедневного плана."
             ),
