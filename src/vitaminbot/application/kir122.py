@@ -244,6 +244,14 @@ class KIR122Controller:
                 if len(parts) != 3:
                     return CompositionView(step=CompositionStep.INVALID)
                 record = self._record_from_token(user_id, parts[1], int(parts[2]))
+                self._store.cancel(user_id)
+                base_session = self._base_store.get_session(user_id)
+                if (
+                    base_session is not None
+                    and base_session.state == "composition_serving_quantity"
+                    and base_session.target_instance_id != record.instance_id
+                ):
+                    self._base_store.cancel_pending(user_id)
                 if record.serving_basis_type != "per_label_portion":
                     self._base_store.begin_composition_serving_quantity(
                         user_id,
