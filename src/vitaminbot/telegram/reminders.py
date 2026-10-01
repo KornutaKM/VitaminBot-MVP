@@ -3,15 +3,14 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import defaultdict
-
-import psycopg
 from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
 
+import psycopg
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 
-from vitaminbot.observability import MetricsSink, NULL_METRICS
+from vitaminbot.observability import NULL_METRICS, MetricsSink
 from vitaminbot.persistence.kir120 import DeliveryClaim, KIR120Store
 
 _LOGGER = logging.getLogger(__name__)
