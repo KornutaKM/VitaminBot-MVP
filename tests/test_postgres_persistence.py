@@ -26,6 +26,7 @@ def test_packaged_migration_discovery_finds_initial_sql() -> None:
         ("0007", "supplement_pause_resume"),
         ("0008", "supplement_inventory"),
         ("0009", "inventory_intake_ledger"),
+        ("0010", "account_data_controls"),
     ]
     assert "CREATE TABLE" in migrations[0].sql
     assert "ALTER TABLE" in migrations[1].sql
@@ -81,6 +82,7 @@ def test_migrations_are_reproducible_and_idempotent(
         ("0007", "supplement_pause_resume"),
         ("0008", "supplement_inventory"),
         ("0009", "inventory_intake_ledger"),
+        ("0010", "account_data_controls"),
     ]
 
 
