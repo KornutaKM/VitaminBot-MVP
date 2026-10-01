@@ -296,13 +296,13 @@ async def _cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         telegram_user_id,
     )
     if quick_waiting:
-        view = await asyncio.to_thread(
+        quick_add_view = await asyncio.to_thread(
             base_controller.quick_add_callback,
             telegram_user_id,
             "qac",
             action_key="cmd:cancel:quick-add",
         )
-        await _reply(update, render_quick_add(view))
+        await _reply(update, render_quick_add(quick_add_view))
         return
 
     inventory_waiting = await asyncio.to_thread(
@@ -310,11 +310,11 @@ async def _cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         telegram_user_id,
     )
     if inventory_waiting:
-        view = await asyncio.to_thread(
+        inventory_view = await asyncio.to_thread(
             base_controller.inventory_edit_cancel,
             telegram_user_id,
         )
-        await _reply(update, render_inventory_edit(view))
+        await _reply(update, render_inventory_edit(inventory_view))
         return
 
     applicability_controller = _applicability_controller(context)
@@ -433,13 +433,13 @@ async def _text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         telegram_user_id,
     )
     if quick_waiting:
-        view = await asyncio.to_thread(
+        quick_add_view = await asyncio.to_thread(
             base_controller.quick_add_text,
             telegram_user_id,
             message.text,
             action_key=action_key,
         )
-        await _reply(update, render_quick_add(view))
+        await _reply(update, render_quick_add(quick_add_view))
         return
 
     inventory_waiting = await asyncio.to_thread(
@@ -447,13 +447,13 @@ async def _text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         telegram_user_id,
     )
     if inventory_waiting:
-        view = await asyncio.to_thread(
+        inventory_view = await asyncio.to_thread(
             base_controller.inventory_edit_text,
             telegram_user_id,
             message.text,
             action_key=action_key,
         )
-        await _reply(update, render_inventory_edit(view))
+        await _reply(update, render_inventory_edit(inventory_view))
         return
 
     applicability_controller = _applicability_controller(context)
