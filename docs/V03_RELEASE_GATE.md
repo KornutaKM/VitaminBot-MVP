@@ -10,6 +10,7 @@ an automated regression test.
 | --- | --- | --- |
 | New user | Start -> quick add -> plan -> Today without requiring composition data | `tests/test_v03_quick_add_renderer.py`, `tests/test_v03_today_renderer.py` |
 | Daily loop | Today -> Later -> reminder -> Taken; delivery is not intake proof | `tests/test_kir120_integration.py` |
+| Plan editing | Bucket and exact-time edits are revision-bound; invalid/stale edits fail closed and never change the planned quantity | `tests/test_v03_plan.py`, `tests/test_kir120_integration.py` |
 | Restart safety | Restarted worker cannot duplicate a claimed reminder or intake event | `tests/test_kir120_integration.py` |
 | DST safety | Ambiguous and nonexistent local times fail closed | `tests/test_kir120_integration.py` |
 | Supplement lifecycle | Pause cancels pending reminders; resume starts from the next valid schedule | `tests/test_kir120_integration.py`, `tests/test_v03_supplement_detail.py` |

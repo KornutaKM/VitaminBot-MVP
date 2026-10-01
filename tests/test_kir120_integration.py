@@ -13,7 +13,13 @@ from psycopg import sql
 from telegram import InlineKeyboardMarkup
 
 import vitaminbot.telegram.reminders as reminder_module
-from vitaminbot.application.intake import TodayActionStatus, TodayOccurrenceState
+from vitaminbot.application.intake import (
+    PlanActionStatus,
+    PlanStatus,
+    PlanTimeInputError,
+    TodayActionStatus,
+    TodayOccurrenceState,
+)
 from vitaminbot.application.kir116 import KIR116Controller, Screen
 from vitaminbot.application.kir120 import KIR120Controller
 from vitaminbot.persistence import migrate
@@ -25,6 +31,7 @@ from vitaminbot.persistence.kir120 import (
     NonexistentLocalTime,
     RoutineTimes,
 )
+from vitaminbot.presentation.telegram import render_plan
 from vitaminbot.telegram.bot import build_application
 from vitaminbot.telegram.reminders import TelegramReminderRunner
 
@@ -1041,3 +1048,99 @@ def test_adherence_summary_excludes_occurrences_cancelled_by_pause(
     assert summary.taken == 0
     assert summary.skipped == 0
     assert summary.unresolved == 0
+
+
+def test_structured_plan_bucket_and_exact_time_flow_is_revision_bound(
+    kir120_system: tuple[KIR116Controller, KIR120Controller, KIR120Store, str, str],
+) -> None:
+    kir116, controller, store, _, _ = kir120_system
+    telegram_user_id = 701018
+    user_id = _prepare_planned_user(
+        kir116,
+        store,
+        telegram_user_id,
+        quantity="2",
+        name="Structured Plan supplement",
+    )
+
+    initial = controller.plan_view(telegram_user_id)
+    assert initial.status is PlanStatus.READY
+    assert len(initial.items) == 1
+    assert initial.items[0].schedule_kind == "routine_bucket"
+    assert initial.items[0].schedule_label == "morning"
+    assert initial.items[0].quantity == Decimal("2")
+
+    initial_screen = render_plan(initial)
+    day_callback = _button(initial_screen, "День")
+    moved = controller.apply_plan_action_view(
+        telegram_user_id,
+        day_callback,
+        action_key="structured-plan:day",
+    )
+    assert moved.status is PlanActionStatus.APPLIED
+    assert moved.view is not None
+    assert moved.view.items[0].schedule_label == "day"
+    assert moved.view.items[0].quantity == Decimal("2")
+
+    stale = controller.apply_plan_action_view(
+        telegram_user_id,
+        day_callback,
+        action_key="structured-plan:stale-day",
+    )
+    assert stale.status is PlanActionStatus.STALE
+
+    moved_screen = render_plan(moved.view)
+    exact_callback = _button(moved_screen, "Точное время")
+    edit = controller.apply_plan_action_view(
+        telegram_user_id,
+        exact_callback,
+        action_key="structured-plan:exact-begin",
+    )
+    assert edit.status is PlanActionStatus.INPUT_REQUIRED
+    assert edit.edit is not None
+    assert edit.edit.name == "Structured Plan supplement"
+
+    invalid = controller.apply_plan_text_view(
+        telegram_user_id,
+        "25:99",
+        action_key="structured-plan:invalid-time",
+    )
+    assert invalid.status is PlanActionStatus.INPUT_REQUIRED
+    assert invalid.edit is not None
+    assert invalid.edit.error is PlanTimeInputError.INVALID_FORMAT
+    assert store.schedule_session(user_id) is not None
+
+    saved = controller.apply_plan_text_view(
+        telegram_user_id,
+        "08:30",
+        action_key="structured-plan:exact-save",
+    )
+    assert saved.status is PlanActionStatus.APPLIED
+    assert saved.view is not None
+    assert saved.view.items[0].schedule_kind == "explicit_time"
+    assert saved.view.items[0].local_time == time(8, 30)
+    assert saved.view.items[0].quantity == Decimal("2")
+    assert store.schedule_session(user_id) is None
+
+    saved_screen = render_plan(saved.view)
+    exact_again = next(
+        button.callback_data
+        for row in saved_screen.rows
+        for button in row
+        if button.callback_data.startswith("k120e:")
+    )
+    editing_again = controller.apply_plan_action_view(
+        telegram_user_id,
+        exact_again,
+        action_key="structured-plan:exact-begin-cancel",
+    )
+    assert editing_again.status is PlanActionStatus.INPUT_REQUIRED
+    assert store.schedule_session(user_id) is not None
+
+    cancelled = controller.cancel_plan_edit_view(telegram_user_id)
+    assert cancelled.status is PlanActionStatus.CANCELLED
+    assert cancelled.view is not None
+    assert cancelled.view.items[0].schedule_kind == "explicit_time"
+    assert cancelled.view.items[0].local_time == time(8, 30)
+    assert cancelled.view.items[0].quantity == Decimal("2")
+    assert store.schedule_session(user_id) is None

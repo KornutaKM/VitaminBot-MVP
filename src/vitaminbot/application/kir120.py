@@ -3,12 +3,22 @@ from __future__ import annotations
 import base64
 from datetime import UTC, datetime, time, timedelta
 from decimal import Decimal
+from uuid import UUID
 
 from vitaminbot.application.kir116 import Button, Screen
 from vitaminbot.application.views.adherence import (
     AdherenceStatus,
     AdherenceView,
     AdherenceWindowView,
+)
+from vitaminbot.application.views.plan import (
+    PlanActionResult,
+    PlanActionStatus,
+    PlanItemView,
+    PlanStatus,
+    PlanTimeEditView,
+    PlanTimeInputError,
+    PlanView,
 )
 from vitaminbot.application.views.today import (
     TodayActionResult,
@@ -208,6 +218,129 @@ class KIR120Controller:
         return AdherenceView(
             status=AdherenceStatus.READY,
             windows=tuple(windows),
+        )
+
+    def plan_view(self, telegram_user_id: int) -> PlanView:
+        user_id = self._store.ensure_user(telegram_user_id)
+        templates = self._store.list_templates(user_id)
+        if not templates:
+            return PlanView(status=PlanStatus.EMPTY)
+        return PlanView(
+            status=PlanStatus.READY,
+            items=tuple(self._plan_item_view(template) for template in templates),
+        )
+
+    def apply_plan_action_view(
+        self,
+        telegram_user_id: int,
+        data: str,
+        *,
+        action_key: str,
+    ) -> PlanActionResult:
+        user_id = self._store.ensure_user(telegram_user_id)
+        parts = data.split(":")
+        action = parts[0]
+
+        try:
+            if action == "k120b":
+                if len(parts) != 4:
+                    return PlanActionResult(status=PlanActionStatus.INVALID)
+                instance_id = _decode_instance(parts[1])
+                expected_revision = int(parts[2])
+                bucket = _BUCKET_CODES.get(parts[3])
+                if bucket is None:
+                    return PlanActionResult(status=PlanActionStatus.INVALID)
+                self._store.set_schedule_bucket(
+                    user_id,
+                    action_key,
+                    instance_id,
+                    expected_revision,
+                    bucket,
+                )
+                return PlanActionResult(
+                    status=PlanActionStatus.APPLIED,
+                    view=self.plan_view(telegram_user_id),
+                )
+
+            if action == "k120e":
+                if len(parts) != 3:
+                    return PlanActionResult(status=PlanActionStatus.INVALID)
+                instance_id = _decode_instance(parts[1])
+                expected_revision = int(parts[2])
+                self._store.begin_explicit_time_edit(
+                    user_id,
+                    action_key,
+                    instance_id,
+                    expected_revision,
+                )
+                edit = self._plan_time_edit_view(
+                    user_id,
+                    instance_id,
+                    expected_revision,
+                )
+                if edit is None:
+                    return PlanActionResult(status=PlanActionStatus.STALE)
+                return PlanActionResult(
+                    status=PlanActionStatus.INPUT_REQUIRED,
+                    edit=edit,
+                )
+        except ValueError:
+            return PlanActionResult(status=PlanActionStatus.INVALID)
+        except (StaleOccurrence, InvalidOccurrenceState, ScheduleRecordNotFound):
+            return PlanActionResult(status=PlanActionStatus.STALE)
+
+        return PlanActionResult(status=PlanActionStatus.INVALID)
+
+    def apply_plan_text_view(
+        self,
+        telegram_user_id: int,
+        value: str,
+        *,
+        action_key: str,
+    ) -> PlanActionResult:
+        user_id = self._store.ensure_user(telegram_user_id)
+        session = self._store.schedule_session(user_id)
+        if session is None:
+            return PlanActionResult(status=PlanActionStatus.INVALID)
+
+        instance_id, expected_revision, _session_revision = session
+        edit = self._plan_time_edit_view(
+            user_id,
+            instance_id,
+            expected_revision,
+        )
+        if edit is None:
+            return PlanActionResult(status=PlanActionStatus.STALE)
+
+        try:
+            local_time = _parse_clock(value)
+        except ValueError:
+            return PlanActionResult(
+                status=PlanActionStatus.INPUT_REQUIRED,
+                edit=PlanTimeEditView(
+                    instance_id=edit.instance_id,
+                    name=edit.name,
+                    expected_plan_revision=edit.expected_plan_revision,
+                    error=PlanTimeInputError.INVALID_FORMAT,
+                ),
+            )
+
+        try:
+            self._store.save_explicit_time(user_id, action_key, local_time)
+        except (InvalidOccurrenceState, StaleOccurrence, ScheduleRecordNotFound):
+            return PlanActionResult(status=PlanActionStatus.STALE)
+
+        return PlanActionResult(
+            status=PlanActionStatus.APPLIED,
+            view=self.plan_view(telegram_user_id),
+        )
+
+    def cancel_plan_edit_view(self, telegram_user_id: int) -> PlanActionResult:
+        user_id = self._store.ensure_user(telegram_user_id)
+        self._store.cancel_schedule_edit(user_id)
+        return PlanActionResult(
+            status=PlanActionStatus.CANCELLED,
+            view=self.plan_view(telegram_user_id),
         )
 
     def plan(self, telegram_user_id: int, *, prefix: str = "") -> Screen:
@@ -450,6 +583,42 @@ class KIR120Controller:
             )
 
         return Screen(text="Unsupported Today/Plan action.")
+
+    @staticmethod
+    def _plan_item_view(template: ScheduleTemplate) -> PlanItemView:
+        return PlanItemView(
+            instance_id=template.instance_id,
+            name=template.name,
+            plan_revision=template.plan_revision,
+            quantity=template.quantity,
+            unit_label=template.unit_label,
+            schedule_kind=template.schedule_kind,
+            schedule_label=template.schedule_label,
+            local_time=template.local_time,
+        )
+
+    def _plan_time_edit_view(
+        self,
+        user_id: UUID,
+        instance_id: str,
+        expected_revision: int,
+    ) -> PlanTimeEditView | None:
+        templates = self._store.list_templates(user_id)
+        template = next(
+            (
+                item
+                for item in templates
+                if item.instance_id == instance_id and item.plan_revision == expected_revision
+            ),
+            None,
+        )
+        if template is None:
+            return None
+        return PlanTimeEditView(
+            instance_id=template.instance_id,
+            name=template.name,
+            expected_plan_revision=template.plan_revision,
+        )
 
     @staticmethod
     def _template_schedule(template: ScheduleTemplate) -> str:
