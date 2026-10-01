@@ -78,9 +78,7 @@ def test_plan_renderer_shows_exact_time_without_timing_claim() -> None:
     screen = render_plan(view)
 
     assert "2 капсулы · 08:30" in screen.text
-    assert "✓ Точное время · 08:30" in [
-        button.label for row in screen.rows for button in row
-    ]
+    assert "✓ Точное время · 08:30" in [button.label for row in screen.rows for button in row]
     assert "биологическое преимущество времени суток" in screen.text
 
 
@@ -113,14 +111,10 @@ def test_plan_time_input_and_fail_closed_actions_are_explicit() -> None:
     )
     assert "Не удалось распознать время." in invalid.text
 
-    stale = render_plan_action_result(
-        PlanActionResult(status=PlanActionStatus.STALE)
-    )
+    stale = render_plan_action_result(PlanActionResult(status=PlanActionStatus.STALE))
     assert "Старое действие не применено." in stale.text
 
-    malformed = render_plan_action_result(
-        PlanActionResult(status=PlanActionStatus.INVALID)
-    )
+    malformed = render_plan_action_result(PlanActionResult(status=PlanActionStatus.INVALID))
     assert "План не изменён." in malformed.text
 
 
