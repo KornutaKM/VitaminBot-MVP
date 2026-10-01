@@ -27,6 +27,7 @@ def test_packaged_migration_discovery_finds_initial_sql() -> None:
         ("0008", "supplement_inventory"),
         ("0009", "inventory_intake_ledger"),
         ("0010", "account_data_controls"),
+        ("0011", "structured_composition_sessions"),
     ]
     assert "CREATE TABLE" in migrations[0].sql
     assert "ALTER TABLE" in migrations[1].sql
@@ -84,6 +85,31 @@ def test_migrations_are_reproducible_and_idempotent(
         ("0009", "inventory_intake_ledger"),
         ("0010", "account_data_controls"),
     ]
+
+
+def test_structured_composition_session_requires_target_supplement(
+    postgres_schema: tuple[str, str],
+) -> None:
+    database_url, schema = postgres_schema
+    user_id = uuid4()
+
+    with _connect(database_url, schema) as conn:
+        conn.execute(
+            "INSERT INTO users (user_id, telegram_user_id) VALUES (%s, %s)",
+            (user_id, 987654321),
+        )
+        with pytest.raises(psycopg.errors.CheckViolation):
+            conn.execute(
+                """
+                INSERT INTO bot_sessions (
+                    user_id,
+                    state,
+                    expected_revision
+                )
+                VALUES (%s, 'composition_serving_quantity', 1)
+                """,
+                (user_id,),
+            )
 
 
 def test_core_constraints_preserve_domain_and_user_data_boundaries(
