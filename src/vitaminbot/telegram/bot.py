@@ -54,6 +54,8 @@ from vitaminbot.presentation.telegram import (
     render_plan_action_result,
     render_quick_add,
     render_regimen_totals,
+    render_rule_sources,
+    render_rules,
     render_safety,
     render_safety_sources,
     render_supplement_detail,
@@ -619,6 +621,7 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     structured_history = False
     structured_composition = False
     structured_safety = False
+    structured_rules = False
     if query.data == "a":
         quick_add_view = await asyncio.to_thread(
             _controller(context).quick_add_start,
@@ -685,6 +688,22 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             query.data,
             action_key=action_key,
         )
+    elif query.data == "k122rules" and vertical_controller is not None:
+        rules_view = await asyncio.to_thread(
+            vertical_controller.rules_view,
+            telegram_user_id,
+        )
+        screen = render_rules(rules_view)
+        structured_rules = True
+    elif query.data.startswith("k122why:") and vertical_controller is not None:
+        expected_revision = query.data.removeprefix("k122why:")
+        rule_sources_view = await asyncio.to_thread(
+            vertical_controller.rule_sources_view,
+            telegram_user_id,
+            expected_revision,
+        )
+        screen = render_rule_sources(rule_sources_view)
+        structured_rules = True
     elif query.data == "k122safe" and vertical_controller is not None:
         prompt = await asyncio.to_thread(
             vertical_controller.safety_context_prompt,
@@ -837,6 +856,7 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             or structured_history
             or structured_composition
             or structured_safety
+            or structured_rules
         ):
             pass
         elif scientific:

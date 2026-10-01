@@ -35,6 +35,13 @@ from vitaminbot.application.views.plan import (
     PlanTimeInputError,
     PlanView,
 )
+from vitaminbot.application.views.rules import (
+    PlanningRulesView,
+    PlanningRuleView,
+    RuleSourcesStatus,
+    RuleSourcesView,
+    RuleSourceView,
+)
 from vitaminbot.application.views.safety import (
     SafetyContributorView,
     SafetyEntryView,
@@ -89,12 +96,17 @@ __all__ = [
     "PlanTimeEditView",
     "PlanTimeInputError",
     "PlanView",
+    "PlanningRulesView",
+    "PlanningRuleView",
     "NutrientContributorView",
     "NutrientTotalsView",
     "QuickAddStep",
     "QuickAddView",
     "RegimenTotalsStatus",
     "RegimenTotalsView",
+    "RuleSourcesStatus",
+    "RuleSourcesView",
+    "RuleSourceView",
     "SafetyContributorView",
     "SafetyEntryView",
     "SafetySourcesStatus",

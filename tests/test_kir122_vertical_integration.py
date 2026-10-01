@@ -16,6 +16,7 @@ from vitaminbot.application.kir122 import KIR122Controller
 from vitaminbot.application.nutrition import (
     CompositionStep,
     RegimenTotalsStatus,
+    RuleSourcesStatus,
     SafetySourcesStatus,
 )
 from vitaminbot.application.safety_envelope import (
@@ -231,6 +232,11 @@ def test_clean_account_vertical_flow_is_snapshot_bound_and_fail_closed(
     assert "Отсутствие правила не означает, что сочетание безопасно" in rules.text
     assert "биологическое преимущество" in rules.text
 
+    structured_rules = vertical.rules_view(telegram_user_id)
+    assert structured_rules.results
+    assert structured_rules.source_revision
+    old_rule_revision = structured_rules.source_revision
+
     envelopes = vertical.safety_envelopes(telegram_user_id)
     assert envelopes
     assert all(item.status is SafetyStatus.CANNOT_ASSESS for item in envelopes)
@@ -284,6 +290,13 @@ def test_clean_account_vertical_flow_is_snapshot_bound_and_fail_closed(
     )
     assert structured_stale.status is SafetySourcesStatus.STALE
     assert structured_stale.sources == ()
+
+    stale_rule_sources = vertical.rule_sources_view(
+        telegram_user_id,
+        old_rule_revision,
+    )
+    assert stale_rule_sources.status is RuleSourcesStatus.STALE
+    assert stale_rule_sources.sources == ()
 
     today = schedule.today(
         telegram_user_id,
@@ -1039,6 +1052,14 @@ def test_rule_sources_keep_full_accepted_provenance(
         for source in result.source_provenance
     }
     assert expected_sources
+
+    structured_rules = vertical.rules_view(telegram_user_id)
+    structured_sources = vertical.rule_sources_view(
+        telegram_user_id,
+        structured_rules.source_revision,
+    )
+    assert structured_sources.status is RuleSourcesStatus.READY
+    assert structured_sources.sources
 
     for source in expected_sources.values():
         assert source.title in sources.text

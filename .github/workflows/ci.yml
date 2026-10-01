@@ -105,6 +105,7 @@ jobs:
           tests/test_v03_totals.py
           tests/test_v03_composition.py
           tests/test_v03_safety.py
+          tests/test_v03_rules.py
           tests/test_v03_account_data.py
           tests/test_v03_observability.py
           tests/test_v03_unit_of_work.py

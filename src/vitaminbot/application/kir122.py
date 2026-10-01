@@ -24,6 +24,13 @@ from vitaminbot.application.views.composition import (
     CompositionSupplementView,
     CompositionView,
 )
+from vitaminbot.application.views.rules import (
+    PlanningRulesView,
+    PlanningRuleView,
+    RuleSourcesStatus,
+    RuleSourcesView,
+    RuleSourceView,
+)
 from vitaminbot.application.views.safety import (
     SafetyContributorView,
     SafetyEntryView,
@@ -507,6 +514,86 @@ class KIR122Controller:
             ]
         )
         return Screen(text="\n".join(lines), rows=tuple(rows))
+
+    def rules_view(self, telegram_user_id: int) -> PlanningRulesView:
+        user_id = self._base_store.ensure_user(telegram_user_id)
+        view = self._build_view(user_id)
+        result = view.rule_result
+        projected = tuple(
+            PlanningRuleView(
+                item_names=tuple(
+                    dict.fromkeys(
+                        view.item_names.get(item_id, "Подтверждённая позиция")
+                        for item_id in rule.item_ids
+                    )
+                ),
+                status=rule.status,
+                rule_type=rule.rule_type,
+                event_relation=rule.event_relation,
+                warnings=rule.warnings,
+            )
+            for rule in result.scheduling_results
+        )
+        return PlanningRulesView(
+            global_status=result.global_status,
+            global_reasons=result.global_reasons,
+            results=projected,
+            source_revision=self._short_revision(view.snapshot.context_revision),
+            ruleset_version=result.ruleset_version,
+        )
+
+    def rule_sources_view(
+        self,
+        telegram_user_id: int,
+        expected_revision: str,
+    ) -> RuleSourcesView:
+        user_id = self._base_store.ensure_user(telegram_user_id)
+        view = self._build_view(user_id)
+        result = view.rule_result
+        if self._short_revision(view.snapshot.context_revision) != expected_revision:
+            return RuleSourcesView(
+                status=RuleSourcesStatus.STALE,
+                ruleset_version=result.ruleset_version,
+            )
+
+        unique_sources = {
+            (
+                source.title,
+                source.authority,
+                source.jurisdiction_note,
+                source.version_label,
+                source.retrieved_on.isoformat(),
+                source.locator,
+                source.source_url,
+            )
+            for rule in result.scheduling_results
+            for source in rule.source_provenance
+        }
+        sources = tuple(
+            RuleSourceView(
+                title=title,
+                authority=authority,
+                jurisdiction_note=jurisdiction_note,
+                version_label=version_label,
+                retrieved_on=retrieved_on,
+                locator=locator,
+                source_url=source_url,
+            )
+            for (
+                title,
+                authority,
+                jurisdiction_note,
+                version_label,
+                retrieved_on,
+                locator,
+                source_url,
+            ) in sorted(unique_sources, key=lambda item: (item[0], item[5], item[6]))
+        )
+        return RuleSourcesView(
+            status=RuleSourcesStatus.READY,
+            ruleset_version=result.ruleset_version,
+            sources=sources,
+        )
 
     def rules(self, telegram_user_id: int) -> Screen:
         user_id = self._base_store.ensure_user(telegram_user_id)
