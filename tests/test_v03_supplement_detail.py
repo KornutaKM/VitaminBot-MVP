@@ -66,9 +66,7 @@ def test_label_serving_detail_preserves_explicit_manual_fact() -> None:
 
 
 def test_supplement_detail_stale_and_missing_fail_closed() -> None:
-    stale = render_supplement_detail(
-        SupplementDetailView(status=SupplementDetailStatus.STALE)
-    )
+    stale = render_supplement_detail(SupplementDetailView(status=SupplementDetailStatus.STALE))
     assert "Карточка добавки устарела." in stale.text
     assert [button.callback_data for row in stale.rows for button in row] == ["ls"]
 
