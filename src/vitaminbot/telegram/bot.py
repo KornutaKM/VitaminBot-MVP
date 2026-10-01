@@ -297,13 +297,13 @@ async def _cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         telegram_user_id,
     )
     if quick_waiting:
-        view = await asyncio.to_thread(
+        quick_add_view = await asyncio.to_thread(
             base_controller.quick_add_callback,
             telegram_user_id,
             "qac",
             action_key="cmd:cancel:quick-add",
         )
-        await _reply(update, render_quick_add(view))
+        await _reply(update, render_quick_add(quick_add_view))
         return
 
     inventory_waiting = await asyncio.to_thread(
@@ -311,11 +311,11 @@ async def _cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         telegram_user_id,
     )
     if inventory_waiting:
-        view = await asyncio.to_thread(
+        inventory_view = await asyncio.to_thread(
             base_controller.inventory_edit_cancel,
             telegram_user_id,
         )
-        await _reply(update, render_inventory_edit(view))
+        await _reply(update, render_inventory_edit(inventory_view))
         return
 
     applicability_controller = _applicability_controller(context)
@@ -443,13 +443,13 @@ async def _text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         telegram_user_id,
     )
     if quick_waiting:
-        view = await asyncio.to_thread(
+        quick_add_view = await asyncio.to_thread(
             base_controller.quick_add_text,
             telegram_user_id,
             message.text,
             action_key=action_key,
         )
-        await _reply(update, render_quick_add(view))
+        await _reply(update, render_quick_add(quick_add_view))
         return
 
     inventory_waiting = await asyncio.to_thread(
@@ -457,13 +457,13 @@ async def _text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         telegram_user_id,
     )
     if inventory_waiting:
-        view = await asyncio.to_thread(
+        inventory_view = await asyncio.to_thread(
             base_controller.inventory_edit_text,
             telegram_user_id,
             message.text,
             action_key=action_key,
         )
-        await _reply(update, render_inventory_edit(view))
+        await _reply(update, render_inventory_edit(inventory_view))
         return
 
     applicability_controller = _applicability_controller(context)
@@ -546,54 +546,54 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     structured_inventory = False
     structured_adherence = False
     if query.data == "a":
-        view = await asyncio.to_thread(
+        quick_add_view = await asyncio.to_thread(
             _controller(context).quick_add_start,
             telegram_user_id,
             action_key=action_key,
         )
-        screen = render_quick_add(view)
+        screen = render_quick_add(quick_add_view)
         structured_add = True
     elif query.data == "qac" or query.data.startswith(("qau:", "qaq:", "qab:")):
-        view = await asyncio.to_thread(
+        quick_add_view = await asyncio.to_thread(
             _controller(context).quick_add_callback,
             telegram_user_id,
             query.data,
             action_key=action_key,
         )
-        screen = render_quick_add(view)
+        screen = render_quick_add(quick_add_view)
         structured_add = True
     elif query.data.startswith("o:"):
-        view = await asyncio.to_thread(
+        supplement_view = await asyncio.to_thread(
             _controller(context).supplement_detail_callback_view,
             telegram_user_id,
             query.data,
         )
-        screen = render_supplement_detail(view)
+        screen = render_supplement_detail(supplement_view)
         structured_supplement = True
     elif query.data.startswith(("ps:", "rs:")):
-        view = await asyncio.to_thread(
+        supplement_view = await asyncio.to_thread(
             _controller(context).supplement_lifecycle_callback_view,
             telegram_user_id,
             query.data,
             action_key=action_key,
         )
-        screen = render_supplement_detail(view)
+        screen = render_supplement_detail(supplement_view)
         structured_supplement = True
     elif query.data.startswith("iv:"):
-        view = await asyncio.to_thread(
+        inventory_view = await asyncio.to_thread(
             _controller(context).inventory_edit_start,
             telegram_user_id,
             query.data,
             action_key=action_key,
         )
-        screen = render_inventory_edit(view)
+        screen = render_inventory_edit(inventory_view)
         structured_inventory = True
     elif query.data == "ivc":
-        view = await asyncio.to_thread(
+        inventory_view = await asyncio.to_thread(
             _controller(context).inventory_edit_cancel,
             telegram_user_id,
         )
-        screen = render_inventory_edit(view)
+        screen = render_inventory_edit(inventory_view)
         structured_inventory = True
     elif query.data.startswith("k174") and applicability_controller is not None:
         applicability_action = True
@@ -618,23 +618,20 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             query.data,
         )
     elif query.data == "k120today" and schedule_controller is not None:
-        view = await asyncio.to_thread(
+        today_view = await asyncio.to_thread(
             schedule_controller.today_view,
             telegram_user_id,
         )
-        screen = render_today(view)
+        screen = render_today(today_view)
         structured_today = True
     elif query.data == "k120a" and schedule_controller is not None:
-        view = await asyncio.to_thread(
+        adherence_view = await asyncio.to_thread(
             schedule_controller.adherence_view,
             telegram_user_id,
         )
-        screen = render_adherence(view)
+        screen = render_adherence(adherence_view)
         structured_adherence = True
-    elif (
-        query.data.startswith(("k120t:", "k120s:", "k120l:"))
-        and schedule_controller is not None
-    ):
+    elif query.data.startswith(("k120t:", "k120s:", "k120l:")) and schedule_controller is not None:
         result = await asyncio.to_thread(
             schedule_controller.apply_today_action_view,
             telegram_user_id,
