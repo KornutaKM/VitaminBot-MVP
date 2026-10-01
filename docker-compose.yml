@@ -1,6 +1,17 @@
+x-vitaminbot-environment: &vitaminbot-environment
+  APP_ENV: ${APP_ENV:-development}
+  DATABASE_URL: ${DATABASE_URL_DOCKER:-postgresql://vitaminbot:replace-with-local-development-password@postgres:5432/vitaminbot}
+  TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN must be set in .env}
+  REMINDER_MORNING_TIME: ${REMINDER_MORNING_TIME:-08:00}
+  REMINDER_DAY_TIME: ${REMINDER_DAY_TIME:-13:00}
+  REMINDER_EVENING_TIME: ${REMINDER_EVENING_TIME:-19:00}
+  REMINDER_LATER_MINUTES: ${REMINDER_LATER_MINUTES:-30}
+  REMINDER_POLL_SECONDS: ${REMINDER_POLL_SECONDS:-30}
+
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-vitaminbot}
       POSTGRES_USER: ${POSTGRES_USER:-vitaminbot}
@@ -8,13 +19,51 @@ services:
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vitaminbot} -d ${POSTGRES_DB:-vitaminbot}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-vitaminbot} -d ${POSTGRES_DB:-vitaminbot}",
+        ]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 20
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  migrate:
+    build:
+      context: .
+    command: ["vitaminbot-migrate"]
+    environment:
+      <<: *vitaminbot-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  bot:
+    build:
+      context: .
+    command: ["vitaminbot-bot"]
+    init: true
+    restart: unless-stopped
+    environment:
+      <<: *vitaminbot-environment
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    build:
+      context: .
+    command: ["vitaminbot-worker"]
+    init: true
+    restart: unless-stopped
+    environment:
+      <<: *vitaminbot-environment
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   postgres_data:
