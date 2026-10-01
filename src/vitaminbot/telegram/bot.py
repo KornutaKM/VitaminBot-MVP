@@ -54,6 +54,8 @@ from vitaminbot.presentation.telegram import (
     render_plan_action_result,
     render_quick_add,
     render_regimen_totals,
+    render_safety,
+    render_safety_sources,
     render_supplement_detail,
     render_today,
     render_today_action_result,
@@ -487,8 +489,12 @@ async def _safety(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     controller = _vertical_controller(context)
     if telegram_user_id is None or controller is None:
         return
-    screen = await asyncio.to_thread(controller.safety, telegram_user_id)
-    await _reply(update, _operational_screen(context, screen, surface="safety"))
+    prompt = await asyncio.to_thread(controller.safety_context_prompt, telegram_user_id)
+    if prompt is not None:
+        await _reply(update, prompt)
+        return
+    view = await asyncio.to_thread(controller.safety_view, telegram_user_id)
+    await _reply(update, render_safety(view))
 
 
 async def _text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -612,6 +618,7 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     structured_plan = False
     structured_history = False
     structured_composition = False
+    structured_safety = False
     if query.data == "a":
         quick_add_view = await asyncio.to_thread(
             _controller(context).quick_add_start,
@@ -678,6 +685,30 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             query.data,
             action_key=action_key,
         )
+    elif query.data == "k122safe" and vertical_controller is not None:
+        prompt = await asyncio.to_thread(
+            vertical_controller.safety_context_prompt,
+            telegram_user_id,
+        )
+        if prompt is not None:
+            screen = prompt
+            applicability_action = True
+        else:
+            safety_view = await asyncio.to_thread(
+                vertical_controller.safety_view,
+                telegram_user_id,
+            )
+            screen = render_safety(safety_view)
+            structured_safety = True
+    elif query.data.startswith("k122src:") and vertical_controller is not None:
+        expected_revision = query.data.removeprefix("k122src:")
+        sources_view = await asyncio.to_thread(
+            vertical_controller.safety_sources_view,
+            telegram_user_id,
+            expected_revision,
+        )
+        screen = render_safety_sources(sources_view)
+        structured_safety = True
     elif query.data == "k122tot" and vertical_controller is not None:
         totals_view = await asyncio.to_thread(
             vertical_controller.totals_view,
@@ -805,6 +836,7 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             or structured_plan
             or structured_history
             or structured_composition
+            or structured_safety
         ):
             pass
         elif scientific:
