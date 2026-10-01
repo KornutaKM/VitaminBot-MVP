@@ -14,11 +14,11 @@ from vitaminbot.application.kir116 import KIR116Controller, Screen
 from vitaminbot.application.kir120 import KIR120Controller
 from vitaminbot.application.kir122 import KIR122Controller
 from vitaminbot.application.nutrition import RegimenTotalsStatus
-from vitaminbot.domain import Unit
 from vitaminbot.application.safety_envelope import (
     SafetyEvidenceState,
     SafetyStatus,
 )
+from vitaminbot.domain import Unit
 from vitaminbot.persistence import migrate
 from vitaminbot.persistence.kir116 import KIR116Store
 from vitaminbot.persistence.kir120 import KIR120Store, RoutineTimes
