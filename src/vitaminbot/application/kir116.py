@@ -197,7 +197,6 @@ class KIR116Controller:
             inventory_remaining_units=record.inventory_remaining_units,
             inventory_unit_id=record.inventory_unit_id,
             inventory_revision=record.inventory_revision,
-            inventory_needs_reconciliation=record.inventory_needs_reconciliation,
         )
 
     def inventory_edit_pending(self, telegram_user_id: int) -> bool:
@@ -330,14 +329,14 @@ class KIR116Controller:
                     revision=draft.revision,
                 )
             if session.state == "manual_unit":
-                existing_draft = self._store.get_draft(user_id)
-                if existing_draft is None:
+                draft = self._store.get_draft(user_id)
+                if draft is None:
                     return QuickAddView(step=QuickAddStep.STALE)
                 return QuickAddView(
                     step=QuickAddStep.UNIT,
-                    name=existing_draft.product_name,
-                    draft_id=existing_draft.draft_id,
-                    revision=existing_draft.revision,
+                    name=draft.product_name,
+                    draft_id=draft.draft_id,
+                    revision=draft.revision,
                 )
             if session.state == "plan_quantity":
                 quantity = self._parse_positive_decimal(value)
@@ -373,11 +372,11 @@ class KIR116Controller:
                 )
         except ValueError:
             if session.state == "manual_name":
-                existing_draft = self._store.get_draft(user_id)
+                draft = self._store.get_draft(user_id)
                 return QuickAddView(
                     step=QuickAddStep.NAME,
-                    draft_id=None if existing_draft is None else existing_draft.draft_id,
-                    revision=None if existing_draft is None else existing_draft.revision,
+                    draft_id=None if draft is None else draft.draft_id,
+                    revision=None if draft is None else draft.revision,
                 )
             if session.state == "plan_quantity" and session.target_instance_id is not None:
                 record = self._store.supplement(user_id, session.target_instance_id)

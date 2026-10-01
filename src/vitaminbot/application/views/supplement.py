@@ -29,4 +29,3 @@ class SupplementDetailView:
     inventory_remaining_units: Decimal | None = None
     inventory_unit_id: str | None = None
     inventory_revision: int | None = None
-    inventory_needs_reconciliation: bool = False

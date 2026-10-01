@@ -75,7 +75,6 @@ class SupplementRecord:
     inventory_remaining_units: Decimal | None = None
     inventory_unit_id: str | None = None
     inventory_revision: int | None = None
-    inventory_needs_reconciliation: bool = False
 
 
 class KIR116Store:
@@ -182,7 +181,6 @@ class KIR116Store:
             inventory_remaining_units=row["inventory_remaining_units"],
             inventory_unit_id=row["inventory_unit_id"],
             inventory_revision=row["inventory_revision"],
-            inventory_needs_reconciliation=bool(row["inventory_needs_reconciliation"]),
         )
 
     @staticmethod
@@ -1603,67 +1601,27 @@ class KIR116Store:
             if supplement.revision != int(session["expected_supplement_revision"]):
                 raise StaleAction("supplement changed before inventory was saved")
 
-            previous = conn.execute(
-                """
-                SELECT remaining_units, needs_reconciliation
-                FROM supplement_inventory
-                WHERE tracked_instance_id = %s
-                FOR UPDATE
-                """,
-                (supplement.instance_id,),
-            ).fetchone()
-            inventory = conn.execute(
+            conn.execute(
                 """
                 INSERT INTO supplement_inventory (
                     tracked_instance_id,
                     formulation_id,
                     consumption_unit_id,
-                    remaining_units,
-                    needs_reconciliation
+                    remaining_units
                 )
-                VALUES (%s, %s, %s, %s, FALSE)
+                VALUES (%s, %s, %s, %s)
                 ON CONFLICT (tracked_instance_id) DO UPDATE
                 SET formulation_id = EXCLUDED.formulation_id,
                     consumption_unit_id = EXCLUDED.consumption_unit_id,
                     remaining_units = EXCLUDED.remaining_units,
-                    needs_reconciliation = FALSE,
                     revision = supplement_inventory.revision + 1,
                     updated_at = CURRENT_TIMESTAMP
-                RETURNING revision
                 """,
                 (
                     supplement.instance_id,
                     supplement.formulation_id,
                     supplement.unit_id,
                     quantity,
-                ),
-            ).fetchone()
-            assert inventory is not None
-            conn.execute(
-                """
-                INSERT INTO inventory_events (
-                    event_id,
-                    tracked_instance_id,
-                    consumption_unit_id,
-                    event_kind,
-                    quantity_units,
-                    balance_before,
-                    balance_after,
-                    needs_reconciliation_before,
-                    inventory_revision_after,
-                    balance_applied
-                )
-                VALUES (%s, %s, %s, 'manual_set', %s, %s, %s, %s, %s, TRUE)
-                """,
-                (
-                    f"inventory:event:{uuid4().hex}",
-                    supplement.instance_id,
-                    supplement.unit_id,
-                    quantity,
-                    None if previous is None else previous["remaining_units"],
-                    quantity,
-                    None if previous is None else previous["needs_reconciliation"],
-                    int(inventory["revision"]),
                 ),
             )
             conn.execute(
@@ -1963,9 +1921,7 @@ class KIR116Store:
                 head.revision AS plan_revision,
                 inventory.remaining_units AS inventory_remaining_units,
                 inventory.consumption_unit_id AS inventory_unit_id,
-                inventory.revision AS inventory_revision,
-                COALESCE(inventory.needs_reconciliation, FALSE)
-                    AS inventory_needs_reconciliation
+                inventory.revision AS inventory_revision
             FROM user_supplements AS us
             JOIN consumption_units AS unit
               ON unit.formulation_id = us.formulation_id
