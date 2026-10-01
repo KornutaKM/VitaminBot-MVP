@@ -69,14 +69,10 @@ def test_adherence_renderer_handles_empty_window_without_fake_percentage() -> No
 
 
 def test_adherence_renderer_fail_closed_states() -> None:
-    missing = render_adherence(
-        AdherenceView(status=AdherenceStatus.MISSING_TIMEZONE)
-    )
+    missing = render_adherence(AdherenceView(status=AdherenceStatus.MISSING_TIMEZONE))
     assert "нужен ваш часовой пояс" in missing.text
     assert [button.callback_data for row in missing.rows for button in row] == ["pf"]
 
-    invalid = render_adherence(
-        AdherenceView(status=AdherenceStatus.INVALID_SCHEDULE)
-    )
+    invalid = render_adherence(AdherenceView(status=AdherenceStatus.INVALID_SCHEDULE))
     assert "не стал достраивать события автоматически" in invalid.text
     assert [button.callback_data for row in invalid.rows for button in row] == ["k120p"]
