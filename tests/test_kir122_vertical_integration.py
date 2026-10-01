@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from decimal import Decimal
 from uuid import uuid4
 
 import psycopg
@@ -12,6 +13,8 @@ from psycopg import sql
 from vitaminbot.application.kir116 import KIR116Controller, Screen
 from vitaminbot.application.kir120 import KIR120Controller
 from vitaminbot.application.kir122 import KIR122Controller
+from vitaminbot.application.nutrition import RegimenTotalsStatus
+from vitaminbot.domain import Unit
 from vitaminbot.application.safety_envelope import (
     SafetyEvidenceState,
     SafetyStatus,
@@ -155,6 +158,10 @@ def test_clean_account_vertical_flow_is_snapshot_bound_and_fail_closed(
     telegram_user_id = 122001
     _create_clean_account(base, telegram_user_id)
 
+    empty_totals_view = vertical.totals_view(telegram_user_id)
+    assert empty_totals_view.status is RegimenTotalsStatus.NO_AGGREGATES
+    assert empty_totals_view.nutrients == ()
+
     composition = vertical.composition(telegram_user_id)
     picker = vertical.callback(
         telegram_user_id,
@@ -200,6 +207,20 @@ def test_clean_account_vertical_flow_is_snapshot_bound_and_fail_closed(
     assert "Магний: 75000 мкг" in totals.text
     assert "Example Magnesium: 75000 мкг" in totals.text
     assert "Неизвестное значение не считается нулём" not in totals.text
+
+    structured_totals = vertical.totals_view(telegram_user_id)
+    assert structured_totals.status is RegimenTotalsStatus.READY
+    assert structured_totals.unresolved_contributor_count == 0
+    assert len(structured_totals.nutrients) == 1
+    nutrient = structured_totals.nutrients[0]
+    assert nutrient.name == "Магний"
+    assert nutrient.total == Decimal("75000")
+    assert nutrient.unit is Unit.MICROGRAM
+    assert nutrient.is_complete is True
+    assert len(nutrient.contributors) == 1
+    assert nutrient.contributors[0].name == "Example Magnesium"
+    assert nutrient.contributors[0].value == Decimal("75000")
+    assert nutrient.substance_key == "magnesium"
 
     rules = vertical.rules(telegram_user_id)
     assert "Это не подтверждение совместимости или безопасности" in rules.text
