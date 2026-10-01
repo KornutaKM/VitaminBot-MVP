@@ -106,11 +106,14 @@ def test_delete_account_cascades_user_data_and_purges_manual_provenance(
         token=token,
         expires_at=now + timedelta(minutes=15),
     )
-    assert account_store.delete_account(
-        telegram_user_id,
-        token=token,
-        now=now,
-    ) == "deleted"
+    assert (
+        account_store.delete_account(
+            telegram_user_id,
+            token=token,
+            now=now,
+        )
+        == "deleted"
+    )
 
     with _connect(database_url, schema) as conn:
         assert conn.execute(
@@ -135,11 +138,14 @@ def test_delete_account_cascades_user_data_and_purges_manual_provenance(
         ).fetchone() == (0,)
 
     recreated_user_id = supplement_store.ensure_user(telegram_user_id)
-    assert account_store.delete_account(
-        telegram_user_id,
-        token=token,
-        now=now + timedelta(minutes=1),
-    ) == "stale"
+    assert (
+        account_store.delete_account(
+            telegram_user_id,
+            token=token,
+            now=now + timedelta(minutes=1),
+        )
+        == "stale"
+    )
 
     with _connect(database_url, schema) as conn:
         assert conn.execute(
