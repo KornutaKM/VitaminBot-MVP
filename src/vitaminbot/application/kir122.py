@@ -8,6 +8,12 @@ from uuid import UUID
 
 from vitaminbot.application.kir116 import Button, Screen
 from vitaminbot.application.kir174 import BoundApplicabilityContext, KIR174Controller
+from vitaminbot.application.views.totals import (
+    NutrientContributorView,
+    NutrientTotalsView,
+    RegimenTotalsStatus,
+    RegimenTotalsView,
+)
 from vitaminbot.application.safety_envelope import (
     SafetyComparisonContext,
     SafetyContributor,
@@ -165,6 +171,65 @@ class KIR122Controller:
             )
         rows.append((Button("Итоги за день", "k122tot"),))
         return Screen(text="\n".join(lines), rows=tuple(rows))
+
+    def totals_view(self, telegram_user_id: int) -> RegimenTotalsView:
+        user_id = self._base_store.ensure_user(telegram_user_id)
+        view = self._build_view(user_id)
+        aggregation = view.aggregation
+
+        if not view.snapshot.supplements:
+            return RegimenTotalsView(status=RegimenTotalsStatus.NO_SUPPLEMENTS)
+
+        unresolved_total = len(aggregation.unresolved_contributors)
+        if not aggregation.aggregates:
+            return RegimenTotalsView(
+                status=RegimenTotalsStatus.NO_AGGREGATES,
+                unresolved_contributor_count=unresolved_total,
+            )
+
+        names = {item.instance_id: item.name for item in view.snapshot.supplements}
+        nutrients: list[NutrientTotalsView] = []
+        for aggregate in aggregation.aggregates:
+            unresolved_count = sum(
+                1
+                for contributor in aggregation.unresolved_contributors
+                if contributor.expected_subject_kind is aggregate.key.subject_kind
+                and contributor.expected_subject_id == aggregate.key.subject_id
+                and contributor.expected_amount_basis is aggregate.key.amount_basis
+                and contributor.expected_equivalence_basis == aggregate.key.equivalence_basis
+            )
+            contributors = tuple(
+                NutrientContributorView(
+                    tracked_instance_id=contributor.tracked_instance_id,
+                    name=names.get(
+                        contributor.tracked_instance_id,
+                        "Подтверждённая добавка",
+                    ),
+                    value=contributor.normalized_value,
+                    unit=contributor.normalized_unit,
+                )
+                for contributor in aggregate.contributors
+            )
+            nutrients.append(
+                NutrientTotalsView(
+                    subject_id=aggregate.key.subject_id,
+                    name=self._subject_name(aggregate.key.subject_id),
+                    total=aggregate.known_total if aggregate.is_complete else None,
+                    unit=aggregate.unit if aggregate.is_complete else None,
+                    is_complete=aggregate.is_complete,
+                    contributors=contributors,
+                    unresolved_contributor_count=unresolved_count,
+                    issue_codes=tuple(issue.value for issue in aggregate.issues),
+                    suppressed_exact_repeat_count=len(aggregate.suppressed_exact_repeat_ids),
+                    substance_key=self._substance_key_for_subject(aggregate.key.subject_id),
+                )
+            )
+
+        return RegimenTotalsView(
+            status=RegimenTotalsStatus.READY,
+            nutrients=tuple(nutrients),
+            unresolved_contributor_count=unresolved_total,
+        )
 
     def totals(self, telegram_user_id: int) -> Screen:
         user_id = self._base_store.ensure_user(telegram_user_id)
