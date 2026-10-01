@@ -1,11 +1,11 @@
 """Structured application-layer view models."""
 
+from vitaminbot.application.views.add import QuickAddStep, QuickAddView
 from vitaminbot.application.views.adherence import (
     AdherenceStatus,
     AdherenceView,
     AdherenceWindowView,
 )
-from vitaminbot.application.views.add import QuickAddStep, QuickAddView
 from vitaminbot.application.views.inventory import InventoryEditStep, InventoryEditView
 from vitaminbot.application.views.supplement import (
     SupplementDetailStatus,
