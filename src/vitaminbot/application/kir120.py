@@ -608,8 +608,7 @@ class KIR120Controller:
             (
                 item
                 for item in templates
-                if item.instance_id == instance_id
-                and item.plan_revision == expected_revision
+                if item.instance_id == instance_id and item.plan_revision == expected_revision
             ),
             None,
         )
