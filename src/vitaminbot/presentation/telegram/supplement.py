@@ -55,16 +55,7 @@ def render_supplement_detail(view: SupplementDetailView) -> Screen:
     basis = _basis_line(view)
 
     return Screen(
-        text=(
-            f"{view.name}\n\n"
-            "Режим\n"
-            f"{plan}\n\n"
-            "Единица учёта\n"
-            f"{unit}\n"
-            f"{basis}\n\n"
-            "Статус\n"
-            "Активен"
-        ),
+        text=(f"{view.name}\n\nРежим\n{plan}\n\nЕдиница учёта\n{unit}\n{basis}\n\nСтатус\nАктивен"),
         rows=(
             (Button("Изменить режим", f"p:{token}:{view.revision}"),),
             (Button("Состав и итоги", "k122comp"),),
