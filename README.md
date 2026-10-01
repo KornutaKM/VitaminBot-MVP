@@ -38,6 +38,30 @@ mypy src
 pytest
 ```
 
+## Docker quick start
+
+Copy the environment template, set a real local Telegram bot token, then start the complete local stack:
+
+```bash
+cp .env.example .env
+# edit .env: set POSTGRES_PASSWORD and TELEGRAM_BOT_TOKEN.
+# A host PostgreSQL installation is not required.
+
+docker compose up --build
+```
+
+Compose starts PostgreSQL, applies migrations once, then starts the Telegram update process and the reminder worker as separate containers.
+
+Useful commands:
+
+```bash
+docker compose ps
+docker compose logs -f bot worker
+docker compose down
+```
+
+Use `docker compose down -v` only when you intentionally want to delete the local PostgreSQL volume.
+
 ## PostgreSQL
 
 Copy the environment template to a local `.env` file and replace placeholder values where appropriate. The real `.env` file is ignored by Git.
