@@ -560,10 +560,7 @@ async def _callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         screen = render_today(today_view)
         structured_today = True
-    elif (
-        query.data.startswith(("k120t:", "k120s:", "k120l:"))
-        and schedule_controller is not None
-    ):
+    elif query.data.startswith(("k120t:", "k120s:", "k120l:")) and schedule_controller is not None:
         result = await asyncio.to_thread(
             schedule_controller.apply_today_action_view,
             telegram_user_id,
