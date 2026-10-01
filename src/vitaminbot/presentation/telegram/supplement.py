@@ -80,7 +80,11 @@ def render_supplement_detail(view: SupplementDetailView) -> Screen:
             (Button("Состав и итоги", "k122comp"),),
             (
                 Button(
-                    "Обновить запас" if view.inventory_remaining_units is not None else "Указать запас",
+                    (
+                        "Обновить запас"
+                        if view.inventory_remaining_units is not None
+                        else "Указать запас"
+                    ),
                     f"iv:{token}:{view.revision}",
                 ),
             ),
