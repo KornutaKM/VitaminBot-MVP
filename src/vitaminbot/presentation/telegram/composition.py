@@ -19,10 +19,7 @@ _MASS_UNITS = {"g": "г", "mg": "мг", "ug": "мкг"}
 def render_composition(view: CompositionView) -> Screen:
     if view.step is CompositionStep.EMPTY:
         return Screen(
-            text=(
-                "Состав\n\n"
-                "Сначала добавьте добавку. Состав не будет придуман автоматически."
-            ),
+            text=("Состав\n\nСначала добавьте добавку. Состав не будет придуман автоматически."),
             rows=((Button("Добавить добавку", "a"),),),
         )
 
@@ -56,9 +53,7 @@ def render_composition(view: CompositionView) -> Screen:
     if view.step is CompositionStep.SERVING_QUANTITY:
         unit = _unit_genitive(view.unit_label)
         error = (
-            "\n\nНе удалось распознать число. Например: 1, 2 или 2,5."
-            if view.input_error
-            else ""
+            "\n\nНе удалось распознать число. Например: 1, 2 или 2,5." if view.input_error else ""
         )
         return Screen(
             text=(
@@ -109,9 +104,7 @@ def render_composition(view: CompositionView) -> Screen:
 
     if view.step is CompositionStep.AMOUNT:
         error = (
-            "\n\nФормат не распознан. Примеры: 100 mg, 250 мкг, 1 g."
-            if view.input_error
-            else ""
+            "\n\nФормат не распознан. Примеры: 100 mg, 250 мкг, 1 g." if view.input_error else ""
         )
         return Screen(
             text=(
