@@ -131,10 +131,7 @@ def _header(view: TodayView) -> str:
     if view.local_date is None:
         return "Сегодня"
     value = view.local_date
-    return (
-        f"Сегодня · {_WEEKDAYS_RU[value.weekday()]}, "
-        f"{value.day} {_MONTHS_RU[value.month]}"
-    )
+    return f"Сегодня · {_WEEKDAYS_RU[value.weekday()]}, {value.day} {_MONTHS_RU[value.month]}"
 
 
 def _state_label(state: TodayOccurrenceState) -> tuple[str, str]:
