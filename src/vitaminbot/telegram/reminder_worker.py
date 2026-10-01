@@ -5,11 +5,16 @@ import asyncio
 from telegram import Bot
 
 from vitaminbot.config import Settings
+from vitaminbot.observability import MetricsSink, build_logging_metrics_sink
 from vitaminbot.persistence.kir120 import KIR120Store, RoutineTimes
 from vitaminbot.telegram.reminders import TelegramReminderRunner
 
 
-def build_runner(settings: Settings) -> TelegramReminderRunner:
+def build_runner(
+    settings: Settings,
+    *,
+    metrics: MetricsSink | None = None,
+) -> TelegramReminderRunner:
     if settings.database_url is None:
         raise ValueError("DATABASE_URL is required")
 
@@ -25,6 +30,7 @@ def build_runner(settings: Settings) -> TelegramReminderRunner:
     return TelegramReminderRunner(
         store,
         poll_seconds=settings.reminder_poll_seconds,
+        metrics=metrics or build_logging_metrics_sink(),
     )
 
 
