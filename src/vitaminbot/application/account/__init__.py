@@ -96,9 +96,7 @@ class AccountController:
             cancelled = self._store.cancel_deletion(telegram_user_id, token=token)
             return AccountDeletionView(
                 status=(
-                    AccountDeletionStatus.CANCELLED
-                    if cancelled
-                    else AccountDeletionStatus.STALE
+                    AccountDeletionStatus.CANCELLED if cancelled else AccountDeletionStatus.STALE
                 )
             )
 
